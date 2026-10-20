@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import type { DiscrepancyKind, OpenDiscrepancy, Snapshot, SyncStore, TrackedItem } from './inventorySync.js';
-import type { PrizeTx, SignedTransfer, TxLog, TxState } from './types.js';
+import type { Logger, PrizeTx, SignedTransfer, TxLog, TxState } from './types.js';
 import type { OpenProposal, Tier, TopUpStore, VaultCard } from './topUp.js';
 import type { ClaimLog } from './feeClaimer.js';
 
@@ -126,22 +126,118 @@ export class PgSyncStore implements SyncStore {
   }
 }
 
+/** The dedicated connection that holds the prize-sender lock (a pg.Client in production, a fake in tests). */
+export interface LockConnection {
+  query<R = any>(sql: string, params?: unknown[]): Promise<{ rows: R[] }>;
+  on(event: 'error', fn: (err: Error) => void): unknown;
+  on(event: 'end', fn: () => void): unknown;
+  end(): Promise<void>;
+}
+
+export interface SingletonLockOptions {
+  /** Called once if the lock may no longer be held (connection died or stopped answering). Stop sending. */
+  onLost: (reason: string) => void;
+  log: Logger;
+  /** Keep retrying for this long before giving up (another sender is really running). */
+  maxWaitMs?: number;
+  /** How often to confirm the lock is still held on its connection. */
+  heartbeatMs?: number;
+  /** Aborting (SIGTERM during a deploy) stops the retry loop; acquire then returns null. */
+  signal?: AbortSignal;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+const HEARTBEAT_TIMEOUT_MS = 10_000;
+
 /**
- * Holds a session-level advisory lock on its own connection so only one prize sender runs.
- * Returns a release function, or null if another process holds the lock.
+ * Takes a session-level advisory lock on its own dedicated connection, so only one prize sender runs.
+ *
+ * Startup retries with backoff instead of failing at once: after a deploy, the old machine's lock can
+ * linger on the session pooler for a few seconds after that process is gone. Only pg_try_advisory_lock
+ * ever grants the lock, so retrying never weakens the single-sender guarantee; if it is still held after
+ * maxWaitMs, another sender really is running and this throws.
+ *
+ * Once held, the lock lives as long as this connection. A heartbeat confirms it is still granted; if the
+ * connection errors, closes, or stops answering, onLost fires so the caller stops sending and exits.
+ * Returns a release function, or null when the signal aborted before the lock was taken.
  */
-export async function acquireSingletonLock(db: pg.Pool, name: string): Promise<(() => Promise<void>) | null> {
-  const client = await db.connect();
-  const { rows } = await client.query<{ ok: boolean }>(`SELECT pg_try_advisory_lock(hashtext($1)) AS ok`, [name]);
-  if (!rows[0]?.ok) {
-    client.release();
-    return null;
-  }
-  return async () => {
+export async function acquireSingletonLock(
+  connect: () => Promise<LockConnection>,
+  name: string,
+  opts: SingletonLockOptions,
+): Promise<(() => Promise<void>) | null> {
+  const { onLost, log, maxWaitMs = 120_000, heartbeatMs = 15_000, signal } = opts;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = opts.now ?? Date.now;
+  const started = now();
+  let delay = 1_000;
+  let client: LockConnection | null = null;
+
+  for (let attempt = 1; ; attempt++) {
+    if (signal?.aborted) {
+      await client?.end().catch(() => {});
+      return null;
+    }
+    let reason: string;
     try {
-      await client.query(`SELECT pg_advisory_unlock(hashtext($1))`, [name]);
+      if (!client) {
+        const c = await connect();
+        // Until the lock is held a dead connection just means "connect again"; this keeps 'error' from crashing.
+        c.on('error', () => {});
+        client = c;
+      }
+      const { rows } = await client.query<{ ok: boolean }>('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [name]);
+      if (rows[0]?.ok) break;
+      reason = 'held by another session';
+    } catch (err) {
+      reason = `connection failed: ${err instanceof Error ? err.message : String(err)}`;
+      await client?.end().catch(() => {});
+      client = null;
+    }
+    const waited = now() - started;
+    if (waited + delay > maxWaitMs) {
+      await client?.end().catch(() => {});
+      throw new Error(`could not take the ${name} lock after ${Math.round(waited / 1000)}s (${reason}); another prize sender may be running`);
+    }
+    log.warn('prize-sender lock not available yet, retrying', { attempt, reason, retryInMs: delay });
+    await sleep(delay);
+    delay = Math.min(delay * 2, 15_000);
+  }
+
+  const held = client!;
+  let done = false;
+  const lose = (reason: string) => {
+    if (done) return;
+    done = true;
+    clearInterval(timer);
+    held.end().catch(() => {});
+    onLost(reason);
+  };
+  held.on('error', (err) => lose(`lock connection error: ${err.message}`));
+  held.on('end', () => lose('lock connection closed'));
+
+  const timer = setInterval(() => {
+    // This connection holds nothing but this lock, so any granted advisory lock on its backend is ours.
+    const check = held.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid = pg_backend_pid()`,
+    );
+    const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('heartbeat timed out')), HEARTBEAT_TIMEOUT_MS));
+    Promise.race([check, timeout]).then(
+      (r) => { if (!((r.rows[0]?.n ?? 0) > 0)) lose('lock no longer granted'); },
+      (err) => lose(`lock heartbeat failed: ${err instanceof Error ? err.message : String(err)}`),
+    );
+  }, heartbeatMs);
+  timer.unref?.();
+
+  return async () => {
+    if (done) return;
+    done = true;
+    clearInterval(timer);
+    try {
+      await held.query('SELECT pg_advisory_unlock_all()');
     } finally {
-      client.release();
+      await held.end().catch(() => {});
     }
   };
 }
