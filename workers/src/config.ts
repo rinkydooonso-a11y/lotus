@@ -14,7 +14,7 @@ const EnvSchema = z.object({
   /** Endpoint that answers Helius DAS calls (getAsset, getAssetsByOwner). Defaults to SOLANA_RPC_URL. */
   HELIUS_DAS_URL: z.string().url().optional(),
   /**
-   * Hot wallet secret key, injected at runtime by the host's secret store (Railway/Fly secrets,
+   * Hot wallet secret key, injected at runtime by the host's secret store (Fly secrets,
    * Doppler, AWS Secrets Manager...). Base58 string or a JSON byte array as written by solana-keygen.
    * Never commit it, never log it.
    */

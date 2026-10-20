@@ -15,7 +15,7 @@ Depends on `@lotus/server` via `file:../server` and imports its prize queue dire
 
 ## Scheduler
 
-One plain Node process, one loop per job: await the tick, sleep the interval, repeat, so ticks never overlap. Deploy as a single always-on worker on Railway or Fly. A Postgres advisory lock (`lotus:prize-sender`) makes a second prize sender refuse to start. Chosen over Inngest/Trigger.dev because it needs no extra account and the sender wants a long-lived process.
+One plain Node process, one loop per job: await the tick, sleep the interval, repeat, so ticks never overlap. Deploy as a single always-on worker on Fly (`fly.workers.toml`). A Postgres advisory lock (`lotus:prize-sender`) makes a second prize sender refuse to start. Chosen over Inngest/Trigger.dev because it needs no extra account and the sender wants a long-lived process.
 
 ## NFT standard
 

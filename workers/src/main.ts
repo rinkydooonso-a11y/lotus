@@ -28,7 +28,7 @@ import { jsonLogger as log, type PrizeQueue } from './types.js';
 
 /**
  * Scheduler: a plain Node process with one loop per job. Each loop awaits its tick, then sleeps
- * for its interval, so ticks never overlap. Deploy as one always-on worker (Railway/Fly). Chosen
+ * for its interval, so ticks never overlap. Deploy as one always-on worker (Fly). Chosen
  * over Inngest/Trigger.dev because it needs no extra account and the prize sender wants a
  * long-lived process holding a DB lock.
  *
