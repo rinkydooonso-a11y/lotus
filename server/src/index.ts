@@ -2,6 +2,7 @@ export * from './types';
 export * from './schemas';
 export { GAME, tierForValue } from './config';
 export { getPool, withTx } from './db';
+export { pgSsl } from './pgSsl';
 export { upsertPlayerByWallet, getPlayer, recordLocationPing } from './players';
 export { spawnCratesNear, getActiveCrates, expireStaleCrates } from './crates';
 export { openCrate, type OpenCrateDeps } from './openCrate';

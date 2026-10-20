@@ -4,6 +4,7 @@ import {
   expireStaleCrates,
   markPrizeFailed,
   markPrizeSent,
+  pgSsl,
   recordSubmittedSignature,
   setInventoryStatus,
 } from '@lotus/server';
@@ -46,7 +47,7 @@ async function main() {
     throw new Error(`unknown mode ${mode}`);
   }
   const config = loadConfig();
-  const db = new pg.Pool({ connectionString: config.DATABASE_URL, max: 10 });
+  const db = new pg.Pool({ connectionString: config.DATABASE_URL, ssl: pgSsl(config.DATABASE_URL), max: 10 });
   const chain = await createSolanaChain(config);
   log.info('workers starting', { mode, hotWallet: chain.hotWallet });
 

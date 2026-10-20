@@ -1,5 +1,6 @@
 import pg from 'pg';
 import type { Pool, PoolClient } from 'pg';
+import { pgSsl } from './pgSsl';
 
 let pool: Pool | null = null;
 
@@ -8,7 +9,11 @@ export function getPool(): Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL is not set');
-    pool = new pg.Pool({ connectionString, max: Number(process.env.PG_POOL_MAX ?? 10) });
+    pool = new pg.Pool({
+      connectionString,
+      ssl: pgSsl(connectionString),
+      max: Number(process.env.PG_POOL_MAX ?? 10),
+    });
   }
   return pool;
 }
