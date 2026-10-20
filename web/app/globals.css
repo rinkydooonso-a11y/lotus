@@ -16,12 +16,22 @@ h1{font-size:28px;margin:4px 0 12px}h2{font-size:18px;margin:20px 0 8px}
 .tabbar{display:flex;background:var(--panel);border-top:1px solid var(--line);padding-bottom:var(--safe-b);z-index:5}
 .tab{flex:1;text-align:center;padding:9px 0 8px;color:var(--muted);text-decoration:none;font-size:12px;font-weight:600}.tab.on{color:var(--pink)}.ti{display:block;font-size:20px;line-height:1.1}
 .mapwrap{position:absolute;inset:0}.mapwrap .map{position:absolute;inset:0}
-.me{width:18px;height:18px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 0 0 8px rgba(59,130,246,.25)}
-.crate{width:44px;height:44px;border-radius:14px;border:2px solid var(--pink);background:var(--panel);font-size:24px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);animation:bob 2s ease-in-out infinite}
-.crate.ticket{border-color:var(--grail)}
-@keyframes bob{50%{transform:translateY(-4px)}}
+.me{position:relative;width:20px;height:20px}
+.me b{position:absolute;inset:3px;border-radius:50%;background:#4f8dff;border:3px solid #fff;box-shadow:0 0 12px rgba(79,141,255,.9)}
+.me i{position:absolute;inset:-2px;border-radius:50%;background:rgba(79,141,255,.45);animation:pulse 2s ease-out infinite}
+@keyframes pulse{from{transform:scale(.6);opacity:.9}to{transform:scale(3);opacity:0}}
+.pin{--c:var(--pink);width:40px;height:40px;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 0 8px color-mix(in srgb,var(--c) 70%,transparent)) drop-shadow(0 3px 5px rgba(0,0,0,.6))}
+.pin span{display:grid;place-items:center;width:40px;height:40px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg) translate(0,0);background:linear-gradient(135deg,var(--c),var(--violet));border:2px solid rgba(255,255,255,.85);font-size:0}
+.pin.ticket{--c:var(--grail)}
+.pin span{font-size:18px}
+.pin span em{font-style:normal;transform:rotate(45deg)}
+.mapctl{position:absolute;right:12px;bottom:calc(14px + var(--safe-b));z-index:3;display:flex;flex-direction:column;background:rgba(26,21,48,.88);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.mapctl button{width:44px;height:44px;border:0;background:none;color:var(--text);font-size:20px;font-weight:700;cursor:pointer}
+.mapctl button+button{border-top:1px solid var(--line)}
+.mapctl button:hover{background:var(--panel2)}.mapctl button.on{color:var(--pink)}.mapctl button:disabled{opacity:.35}
 .fab{position:absolute;right:12px;bottom:14px;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:22px;z-index:3}
 .fab.ticketfab{width:auto;border-radius:99px;padding:0 16px;right:auto;left:12px;font-size:14px;font-weight:700;color:var(--grail)}
+.maplibregl-ctrl-attrib{background:rgba(14,11,26,.6)!important;color:var(--muted)!important}.maplibregl-ctrl-attrib a{color:var(--muted)!important}
 .cta{position:absolute;left:12px;right:12px;bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:18px;z-index:4;text-align:center}
 .cta h2{margin-top:0;font-size:22px}.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:8px 16px;font-size:14px;z-index:3}
 .drawer{position:absolute;left:10px;right:10px;bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:16px;z-index:4;display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 40px rgba(0,0,0,.5)}

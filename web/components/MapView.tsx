@@ -9,11 +9,34 @@ import type { Crate, OpenResult } from "@/lib/types";
 import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
 
-const STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" } },
-  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.5, "raster-brightness-max": 0.85 } }],
-};
+const STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/dark";
+const PITCH_3D = 45;
+
+/** Swap the flat building fill for extruded buildings (OpenFreeMap/OpenMapTiles schema). */
+function add3dBuildings(m: maplibregl.Map) {
+  if (m.getLayer("building-3d")) return;
+  const flat = m.getLayer("building") as { source?: string; minzoom?: number } | undefined;
+  const source = flat?.source ?? "openmaptiles";
+  if (!m.getSource(source)) return;
+  if (flat) m.setLayoutProperty("building", "visibility", "none");
+  // Lift roads and street names slightly so the neutral dark base stays readable under the extrusions.
+  const set = (id: string, prop: string, v: string) => { if (m.getLayer(id)) m.setPaintProperty(id, prop, v); };
+  set("highway_minor", "line-color", "#2e2e31");
+  set("highway_major_inner", "line-color", "#3a3a3d");
+  set("highway_major_subtle", "line-color", "#3a3a3d");
+  set("highway_path", "line-color", "#2a2a2d");
+  set("highway_name_other", "text-color", "#8a8a8e");
+  set("highway_name_motorway", "text-color", "#8a8a8e");
+  m.addLayer({
+    id: "building-3d", type: "fill-extrusion", source, "source-layer": "building", minzoom: 14,
+    paint: {
+      "fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 0], 0, "#151516", 60, "#1c1c1e", 200, "#262628"],
+      "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
+      "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+      "fill-extrusion-opacity": 0.9,
+    },
+  });
+}
 const PING_EVERY_MS = 5000;
 
 interface Fix { lat: number; lng: number; acc: number }
@@ -33,6 +56,7 @@ export default function MapView() {
   const [opening, setOpening] = useState(false);
   const [result, setResult] = useState<OpenResult | null>(null);
   const [connect, setConnect] = useState(false);
+  const [tilt, setTilt] = useState(false);
   const fixRef = useRef<Fix | null>(null);
   fixRef.current = fix;
 
@@ -41,7 +65,8 @@ export default function MapView() {
   // map init
   useEffect(() => {
     if (!el.current) return;
-    const m = new maplibregl.Map({ container: el.current, style: STYLE, center: [-6.26, 53.35], zoom: 15, attributionControl: { compact: true } });
+    const m = new maplibregl.Map({ container: el.current, style: STYLE_URL, center: [-6.26, 53.35], zoom: 15, pitch: 0, maxPitch: 70, attributionControl: { compact: true } });
+    m.on("style.load", () => { try { add3dBuildings(m); } catch { /* flat buildings are fine */ } });
     map.current = m;
     return () => { m.remove(); map.current = null; };
   }, []);
@@ -64,6 +89,7 @@ export default function MapView() {
     if (!me.current) {
       const d = document.createElement("div");
       d.className = "me";
+      d.innerHTML = "<i></i><b></b>";
       me.current = new maplibregl.Marker({ element: d }).setLngLat([fix.lng, fix.lat]).addTo(m);
     } else me.current.setLngLat([fix.lng, fix.lat]);
     if (!centered.current) { centered.current = true; m.jumpTo({ center: [fix.lng, fix.lat], zoom: 17 }); }
@@ -91,11 +117,11 @@ export default function MapView() {
       let mk = markers.current.get(c.id);
       if (!mk) {
         const d = document.createElement("button");
-        d.className = "crate" + (c.kind === "ticket" ? " ticket" : "");
-        d.setAttribute("aria-label", "Crate");
-        d.textContent = c.kind === "ticket" ? "🎟" : "🎁";
+        d.className = "pin" + (c.kind === "ticket" ? " ticket" : "");
+        d.setAttribute("aria-label", c.kind === "ticket" ? "Ticket crate" : "Crate");
+        d.innerHTML = `<span><em>${c.kind === "ticket" ? "🎟" : "🎁"}</em></span>`;
         d.onclick = (e) => { e.stopPropagation(); setSel(c.id); };
-        mk = new maplibregl.Marker({ element: d }).setLngLat([c.lng, c.lat]).addTo(m);
+        mk = new maplibregl.Marker({ element: d, anchor: "bottom" }).setLngLat([c.lng, c.lat]).addTo(m);
         markers.current.set(c.id, mk);
       }
     }
@@ -134,12 +160,22 @@ export default function MapView() {
     }
   };
 
-  const recenter = () => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17 }); };
+  const recenter = () => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17, pitch: tilt ? PITCH_3D : 0 }); };
+  const toggleTilt = () => {
+    const next = !tilt;
+    setTilt(next);
+    map.current?.easeTo({ pitch: next ? PITCH_3D : 0, bearing: next ? map.current.getBearing() : 0, duration: 600 });
+  };
 
   return (
     <div className="mapwrap">
       <div ref={el} className="map" onClick={() => setSel(null)} />
-      <button className="fab" onClick={recenter} aria-label="Center on me">⌖</button>
+      <div className="mapctl">
+        <button onClick={() => map.current?.zoomIn()} aria-label="Zoom in">+</button>
+        <button onClick={() => map.current?.zoomOut()} aria-label="Zoom out">−</button>
+        <button className={tilt ? "on" : ""} onClick={toggleTilt} aria-label="Toggle 3D view">3D</button>
+        <button onClick={recenter} aria-label="Center on me" disabled={!fix}>⌖</button>
+      </div>
       {balances && balances.tickets > 0 && <button className="fab ticketfab" onClick={() => void useTicket()}>🎟 Use ticket</button>}
 
       {!user && !loading && (
