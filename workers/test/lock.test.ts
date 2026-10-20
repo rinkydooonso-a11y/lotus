@@ -56,6 +56,18 @@ describe('acquireSingletonLock (fakes)', () => {
     await release!();
   });
 
+  it('releases the lock and throws when verify fails', async () => {
+    const state = { attempts: 0, freeAfter: 0 };
+    const seen: string[] = [];
+    const conn = fakeConn(state);
+    const query = conn.query.bind(conn);
+    conn.query = (async (sql: string, params?: unknown[]) => { seen.push(sql); return query(sql, params); }) as LockConnection['query'];
+    await expect(acquireSingletonLock(async () => conn, NAME, {
+      log: quiet, onLost: () => {}, sleep: async () => {}, verify: async () => { throw new Error('wrong database'); },
+    })).rejects.toThrow('wrong database');
+    expect(seen).toContain('SELECT pg_advisory_unlock_all()');
+  });
+
   it('returns null when aborted while waiting', async () => {
     const ac = new AbortController();
     const state = { attempts: 0, freeAfter: Infinity };
@@ -92,6 +104,24 @@ describe.skipIf(!process.env.DATABASE_URL)('acquireSingletonLock (postgres)', ()
     const rel = await second;
     expect(rel).toBeTypeOf('function');
     await rel!();
+  });
+
+  it('verify sees the lock from a second connection to the same database', async () => {
+    const other = await connect();
+    const release = await acquireSingletonLock(connect, NAME, {
+      log: quiet, onLost: () => {}, heartbeatMs: 60_000,
+      verify: async (conn) => {
+        const { rows } = await conn.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+        const r = await other.query<{ seen: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid = $1
+                    AND database = (SELECT oid FROM pg_database WHERE datname = current_database())) AS seen`,
+          [rows[0]!.pid],
+        );
+        if (!r.rows[0]!.seen) throw new Error('not seen');
+      },
+    });
+    expect(release).toBeTypeOf('function');
+    await release!();
   });
 
   it('reports the lock as lost when its connection is killed', async () => {

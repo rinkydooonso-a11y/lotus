@@ -4,6 +4,11 @@ const base58Address = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, 'not a b
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
+  /**
+   * Optional direct (non-pooler) connection string, used only for the prize-sender lock, e.g.
+   * postgresql://postgres:PASSWORD@db.<ref>.supabase.co:5432/postgres. Falls back to DATABASE_URL.
+   */
+  DATABASE_LOCK_URL: z.string().optional().transform((v) => v || undefined),
   /** Solana JSON-RPC endpoint used to send and confirm transactions. A Helius devnet URL works for both RPC and DAS. */
   SOLANA_RPC_URL: z.string().url(),
   /** Endpoint that answers Helius DAS calls (getAsset, getAssetsByOwner). Defaults to SOLANA_RPC_URL. */

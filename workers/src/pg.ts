@@ -142,6 +142,8 @@ export interface SingletonLockOptions {
   maxWaitMs?: number;
   /** How often to confirm the lock is still held on its connection. */
   heartbeatMs?: number;
+  /** Runs on the lock connection right after the lock is taken; a throw releases the lock and is rethrown. */
+  verify?: (conn: LockConnection) => Promise<void>;
   /** Aborting (SIGTERM during a deploy) stops the retry loop; acquire then returns null. */
   signal?: AbortSignal;
   sleep?: (ms: number) => Promise<void>;
@@ -206,6 +208,15 @@ export async function acquireSingletonLock(
   }
 
   const held = client!;
+  if (opts.verify) {
+    try {
+      await opts.verify(held);
+    } catch (err) {
+      await held.query('SELECT pg_advisory_unlock_all()').catch(() => {});
+      await held.end().catch(() => {});
+      throw err;
+    }
+  }
   let done = false;
   const lose = (reason: string) => {
     if (done) return;
@@ -222,11 +233,12 @@ export async function acquireSingletonLock(
     const check = held.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid = pg_backend_pid()`,
     );
-    const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('heartbeat timed out')), HEARTBEAT_TIMEOUT_MS));
+    let to: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, rej) => { to = setTimeout(() => rej(new Error('heartbeat timed out')), HEARTBEAT_TIMEOUT_MS); });
     Promise.race([check, timeout]).then(
       (r) => { if (!((r.rows[0]?.n ?? 0) > 0)) lose('lock no longer granted'); },
       (err) => lose(`lock heartbeat failed: ${err instanceof Error ? err.message : String(err)}`),
-    );
+    ).finally(() => clearTimeout(to));
   }, heartbeatMs);
   timer.unref?.();
 

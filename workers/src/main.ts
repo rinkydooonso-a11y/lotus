@@ -75,19 +75,39 @@ async function main() {
   process.once('SIGINT', shutdown);
 
   if (mode === 'all' || mode === 'prize-sender') {
+    // The lock belongs to the Postgres backend, so take it over a direct connection when one is configured:
+    // through the session pooler a backend (and our lock) can outlive this process and be handed to another client.
+    const lockUrl = config.DATABASE_LOCK_URL ?? config.DATABASE_URL;
     const connectLock = async () => {
-      const c = new pg.Client({ connectionString: config.DATABASE_URL, ssl: pgSsl(config.DATABASE_URL), connectionTimeoutMillis: 10_000, keepAlive: true });
+      const c = new pg.Client({ connectionString: lockUrl, ssl: pgSsl(lockUrl), connectionTimeoutMillis: 10_000, keepAlive: true });
       await c.connect();
       return c;
     };
     releaseLock = await acquireSingletonLock(connectLock, 'lotus:prize-sender', {
       log,
+      // A lock on a different database would exclude nothing: check the main pool sees it on the same cluster.
+      verify: async (conn) => {
+        const a = (await conn.query<{ pid: number; db: string; started: Date }>(
+          'SELECT pg_backend_pid() AS pid, current_database() AS db, pg_postmaster_start_time() AS started',
+        )).rows[0]!;
+        const b = (await db.query<{ db: string; started: Date; seen: boolean }>(
+          `SELECT current_database() AS db, pg_postmaster_start_time() AS started,
+                  EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid = $1
+                            AND database = (SELECT oid FROM pg_database WHERE datname = current_database())) AS seen`,
+          [a.pid],
+        )).rows[0]!;
+        if (a.db !== b.db || new Date(a.started).getTime() !== new Date(b.started).getTime() || !b.seen) {
+          throw new Error('DATABASE_LOCK_URL does not point at the same database as DATABASE_URL');
+        }
+      },
       signal: controller.signal,
       onLost: (reason) => {
         // Another machine could take the lock now, so stop everything and let the restart re-acquire it.
         lockLost = true;
         log.error('lost the prize-sender lock; stopping', { reason });
         controller.abort();
+        // Backstop if a tick never returns: exit anyway after the longest legitimate send settles (~140 s).
+        setTimeout(() => process.exit(1), 200_000).unref();
       },
     });
     if (!releaseLock) {
