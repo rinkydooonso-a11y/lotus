@@ -1,0 +1,15 @@
+# Lotus workers (prize sender, inventory sync, crate expiry) as one always-on Fly Machine.
+# Deploy from the repo root: fly deploy -c fly.workers.toml --ha=false
+# Keep exactly one Machine (the prize sender must not run twice).
+app = 'lotus-workers'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'deploy/workers.Dockerfile'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+
+[[restart]]
+  policy = 'always'
