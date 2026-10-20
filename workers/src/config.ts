@@ -26,6 +26,28 @@ const EnvSchema = z.object({
    * sync lists its cards so vault cards that go missing are reported. No key for it ever lives here.
    */
   SQUADS_VAULT_ADDRESS: base58Address.optional(),
+  /** Squads multisig account (not the vault). With SQUADS_PROPOSER_SECRET_KEY, turns on the top-up proposer. */
+  SQUADS_MULTISIG_ADDRESS: base58Address.optional(),
+  /**
+   * Key of a multisig member with the Initiate permission ONLY. It drafts top-ups and pays their
+   * rent; signers approve and execute. The worker refuses to start if it can vote or execute.
+   */
+  SQUADS_PROPOSER_SECRET_KEY: z.string().min(1).optional(),
+  /** Wanted available cards per tier in the hot wallet, e.g. common:10,uncommon:4,rare:2,grail:1 */
+  TOPUP_TARGETS: z.string().default('common:10,uncommon:4,rare:2,grail:1'),
+  TOPUP_MAX_CARDS: z.coerce.number().int().min(1).max(20).default(10),
+  TOPUP_MAX_USD: z.coerce.number().min(0).default(500),
+  TOPUP_MIN_HOT_SOL: z.coerce.number().min(0).default(0.05),
+  TOPUP_SOL_AMOUNT: z.coerce.number().min(0).max(5).default(0.1),
+  TOPUP_INTERVAL_MS: z.coerce.number().int().min(60_000).default(600_000),
+  /** The pump.fun coin whose creator fees go to the vault. With FEE_CLAIMER_SECRET_KEY, turns on the fee claimer. */
+  PUMP_COIN_MINT: base58Address.optional(),
+  /** Gas-only wallet for the fee claimer. Fees never pass through it. */
+  FEE_CLAIMER_SECRET_KEY: z.string().min(1).optional(),
+  FEE_CLAIM_INTERVAL_MS: z.coerce.number().int().min(600_000).default(3 * 3600_000),
+  /** Skip claims smaller than this many base units of the quote asset. */
+  FEE_CLAIM_MIN_BASE_UNITS: z.string().regex(/^\d{1,30}$/).default('1'),
+  FEE_CLAIMER_MIN_GAS_SOL: z.coerce.number().min(0).default(0.005),
   PRIZE_SENDER_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
   PRIZE_SENDER_BATCH: z.coerce.number().int().min(1).max(50).default(10),
   PRIZE_SENDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
@@ -37,8 +59,9 @@ const EnvSchema = z.object({
 export const MAINNET_CONFIRMATION_PHRASE = 'yes-send-real-prizes-on-mainnet';
 export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 
-export type Config = Omit<z.infer<typeof EnvSchema>, 'PRIZE_COLLECTIONS'> & {
+export type Config = Omit<z.infer<typeof EnvSchema>, 'PRIZE_COLLECTIONS' | 'TOPUP_TARGETS'> & {
   PRIZE_COLLECTIONS: string[];
+  TOPUP_TARGETS: Record<'common' | 'uncommon' | 'rare' | 'grail', number>;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -50,25 +73,44 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const collections = parsed.data.PRIZE_COLLECTIONS.split(',').map((s) => s.trim()).filter(Boolean);
   for (const c of collections) base58Address.parse(c);
-  return { ...parsed.data, PRIZE_COLLECTIONS: collections };
+  if (Boolean(parsed.data.SQUADS_MULTISIG_ADDRESS) !== Boolean(parsed.data.SQUADS_PROPOSER_SECRET_KEY)) {
+    throw new Error('Invalid worker environment:\n  set both SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY, or neither');
+  }
+  if (Boolean(parsed.data.PUMP_COIN_MINT) !== Boolean(parsed.data.FEE_CLAIMER_SECRET_KEY)) {
+    throw new Error('Invalid worker environment:\n  set both PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY, or neither');
+  }
+  if (parsed.data.PUMP_COIN_MINT && !parsed.data.SQUADS_VAULT_ADDRESS) {
+    throw new Error('Invalid worker environment:\n  the fee claimer needs SQUADS_VAULT_ADDRESS');
+  }
+  return { ...parsed.data, PRIZE_COLLECTIONS: collections, TOPUP_TARGETS: parseTargets(parsed.data.TOPUP_TARGETS) };
 }
 
-export function parseSecretKey(raw: string): Uint8Array {
+export function parseTargets(raw: string): Config['TOPUP_TARGETS'] {
+  const out = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+  for (const part of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+    const m = /^(common|uncommon|rare|grail):(\d{1,3})$/.exec(part);
+    if (!m) throw new Error(`Invalid worker environment:\n  TOPUP_TARGETS: bad entry "${part}"`);
+    out[m[1] as keyof typeof out] = Number(m[2]);
+  }
+  return out;
+}
+
+export function parseSecretKey(raw: string, name = 'HOT_WALLET_SECRET_KEY'): Uint8Array {
   const trimmed = raw.trim();
   if (trimmed.startsWith('[')) {
     const bytes = z.array(z.number().int().min(0).max(255)).length(64).parse(JSON.parse(trimmed));
     return Uint8Array.from(bytes);
   }
-  return Uint8Array.from(base58Decode(trimmed));
+  return Uint8Array.from(base58Decode(trimmed, name));
 }
 
 // Small local decoder so key parsing has no failure path that could echo the key in an error.
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-function base58Decode(s: string): number[] {
+function base58Decode(s: string, name: string): number[] {
   const bytes: number[] = [0];
   for (const ch of s) {
     let carry = ALPHABET.indexOf(ch);
-    if (carry < 0) throw new Error('HOT_WALLET_SECRET_KEY is not valid base58');
+    if (carry < 0) throw new Error(`${name} is not valid base58`);
     for (let i = 0; i < bytes.length; i++) {
       carry += (bytes[i] ?? 0) * 58;
       bytes[i] = carry & 0xff;
@@ -84,7 +126,7 @@ function base58Decode(s: string): number[] {
     bytes.push(0);
   }
   const out = bytes.reverse();
-  if (out.length !== 64) throw new Error('HOT_WALLET_SECRET_KEY must decode to 64 bytes');
+  if (out.length !== 64) throw new Error(`${name} must decode to 64 bytes`);
   return out;
 }
 

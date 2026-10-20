@@ -50,6 +50,20 @@ Every 2 min: lists the hot wallet via Helius DAS `getAssetsByOwner`, compares wi
 - Everything else goes to `inventory_discrepancies` for the admin page: `untracked` (in wallet, not in DB: add it with `addInventoryItem`), `missing` (reserved/withheld but gone), `sent_but_held`.
 - Writes `vault_snapshots` (on-chain verified count and value) for the public "cards in vault" counter.
 
+## Top-up proposer (`top-up`)
+
+Keeps the hot wallet stocked from the Squads vault without being able to move anything itself. Every `TOPUP_INTERVAL_MS` it compares available cards per tier with `TOPUP_TARGETS`, picks vault cards (oldest first, under `TOPUP_MAX_CARDS` / `TOPUP_MAX_USD`), adds SOL if the hot wallet is under `TOPUP_MIN_HOT_SOL`, and drafts one Squads batch proposal. Signers approve and execute it in the Squads app; inventory sync makes the cards available once they land.
+
+- The proposer key must have the Initiate permission only. The worker refuses to start if it can vote or execute.
+- One open proposal at a time (`topup_proposals`, unique index). Rows are written before any chain call; a proposal that never went live is marked `abandoned` after 10 minutes and its cards return to the pool.
+- A proposal is only trusted if its batch was created by our key, so an index someone else used in the Squads app is never adopted.
+- Executed top-ups write one `topup` treasury event per card, plus one for SOL.
+- `scripts/devnet-topup-e2e.ts` runs the whole flow against a throwaway devnet multisig.
+
+## Fee claimer (`fee-claimer`)
+
+Uses pump.fun's official SDK (`@pump-fun/pump-sdk`, pinned) to call the permissionless sweep, consolidate and `distribute_creator_fees(_v2)` instructions for `PUMP_COIN_MINT`. Fees go from pump's vault straight to the fee-sharing shareholders; the bot's key only pays gas. It refuses to send unless `SQUADS_VAULT_ADDRESS` is a shareholder, simulates first and skips anything under `FEE_CLAIM_MIN_BASE_UNITS`, and logs the measured amount as a `claim` treasury event.
+
 ## Safety
 
 - Hot wallet key only from `HOT_WALLET_SECRET_KEY` (host secret store). Never logged; config errors name the variable, never the value.

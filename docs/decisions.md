@@ -18,3 +18,6 @@
 - `SQUADS_VAULT_ADDRESS` (optional, read-only) lets inventory sync report vault cards that neither wallet holds.
 - Card buying stays manual at launch. The admin form records cost and purchase tx, which writes a `purchase` treasury event.
 - Plan prize math at a 1% creator fee until the live pump.fun form confirms more.
+- Top-ups are one Squads batch proposal per top-up (one approval moves many cards). Drafted by an Initiate-only key; the worker refuses a key that can vote or execute.
+- Fee claiming uses pump.fun's official SDK and only the permissionless distribution path, so it needs a fee-sharing config with the vault as a shareholder.
+- Treasury events are written by the code that causes them (purchase form, top-up execution, fee claim) rather than by a chain watcher.

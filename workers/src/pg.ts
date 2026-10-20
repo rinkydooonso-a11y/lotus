@@ -1,6 +1,8 @@
 import type pg from 'pg';
 import type { DiscrepancyKind, OpenDiscrepancy, Snapshot, SyncStore, TrackedItem } from './inventorySync.js';
 import type { PrizeTx, SignedTransfer, TxLog, TxState } from './types.js';
+import type { OpenProposal, Tier, TopUpStore, VaultCard } from './topUp.js';
+import type { ClaimLog } from './feeClaimer.js';
 
 export class PgTxLog implements TxLog {
   constructor(private readonly db: pg.Pool) {}
@@ -142,4 +144,123 @@ export async function acquireSingletonLock(db: pg.Pool, name: string): Promise<(
       client.release();
     }
   };
+}
+
+export class PgTopUpStore implements TopUpStore {
+  constructor(private readonly db: pg.Pool, private readonly multisig: string) {}
+
+  async openProposal(): Promise<OpenProposal | null> {
+    const { rows } = await this.db.query<{ id: string; transaction_index: string; status: 'creating' | 'active'; created_at: Date }>(
+      `SELECT id, transaction_index, status, created_at FROM topup_proposals
+        WHERE multisig = $1 AND status IN ('creating', 'active') ORDER BY id LIMIT 1`,
+      [this.multisig],
+    );
+    const r = rows[0];
+    return r ? { id: String(r.id), transactionIndex: BigInt(r.transaction_index), status: r.status, createdAt: r.created_at } : null;
+  }
+
+  async vaultCandidates(): Promise<VaultCard[]> {
+    const { rows } = await this.db.query<{ id: string; nft_mint: string; tier: Tier; value_usd: string }>(
+      `SELECT i.id, i.nft_mint, i.tier, i.value_usd FROM inventory_items i
+        WHERE i.location = 'vault' AND i.status = 'withheld'
+          AND NOT EXISTS (
+            SELECT 1 FROM topup_proposal_items pi JOIN topup_proposals p ON p.id = pi.proposal_id
+             WHERE pi.inventory_item_id = i.id AND p.status IN ('creating', 'active', 'executed'))
+        ORDER BY i.acquired_at, i.id`,
+    );
+    return rows.map((r) => ({ id: r.id, nftMint: r.nft_mint, tier: r.tier, valueUsd: Number(r.value_usd) }));
+  }
+
+  async availableByTier(): Promise<Record<Tier, number>> {
+    const { rows } = await this.db.query<{ tier: Tier; n: number }>(
+      `SELECT i.tier, count(*)::int AS n FROM inventory_items i
+        WHERE i.status = 'available'
+           OR (i.location = 'vault' AND i.status = 'withheld' AND EXISTS (
+                SELECT 1 FROM topup_proposal_items pi JOIN topup_proposals p ON p.id = pi.proposal_id
+                 WHERE pi.inventory_item_id = i.id AND p.status = 'executed'))
+        GROUP BY i.tier`,
+    );
+    const out: Record<Tier, number> = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+    for (const r of rows) out[r.tier] = r.n;
+    return out;
+  }
+
+  async insertProposal(p: { transactionIndex: bigint; solLamports: bigint; cards: VaultCard[] }): Promise<string> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO topup_proposals (multisig, transaction_index, sol_lamports) VALUES ($1, $2, $3) RETURNING id`,
+        [this.multisig, p.transactionIndex.toString(), p.solLamports.toString()],
+      );
+      const id = String(rows[0]!.id);
+      for (const c of p.cards) {
+        await client.query(
+          `INSERT INTO topup_proposal_items (proposal_id, inventory_item_id, nft_mint) VALUES ($1, $2, $3)`,
+          [id, c.id, c.nftMint],
+        );
+      }
+      await client.query('COMMIT');
+      return id;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async setStatus(id: string, status: 'active' | 'rejected' | 'cancelled' | 'stale' | 'abandoned', note?: string): Promise<void> {
+    await this.db.query(
+      `UPDATE topup_proposals SET status = $2, note = COALESCE($3, note), updated_at = now()
+        WHERE id = $1 AND status IN ('creating', 'active')`,
+      [id, status, note ?? null],
+    );
+  }
+
+  async markExecuted(id: string): Promise<void> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<{ transaction_index: string; sol_lamports: string }>(
+        `UPDATE topup_proposals SET status = 'executed', updated_at = now()
+          WHERE id = $1 AND status IN ('creating', 'active') RETURNING transaction_index, sol_lamports`,
+        [id],
+      );
+      const p = rows[0];
+      if (p) {
+        const note = `Squads transaction #${p.transaction_index}`;
+        await client.query(
+          `INSERT INTO treasury_events (kind, amount, asset, usd_value, note, inventory_item_id)
+           SELECT 'topup', 1, pi.nft_mint, i.value_usd, $2, i.id
+             FROM topup_proposal_items pi JOIN inventory_items i ON i.id = pi.inventory_item_id
+            WHERE pi.proposal_id = $1`,
+          [id, note],
+        );
+        if (BigInt(p.sol_lamports) > 0n) {
+          await client.query(
+            `INSERT INTO treasury_events (kind, amount, asset, note) VALUES ('topup', $1::numeric / 1e9, 'SOL', $2)`,
+            [p.sol_lamports, note],
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+}
+
+export class PgClaimLog implements ClaimLog {
+  constructor(private readonly db: pg.Pool) {}
+
+  async recordClaim(e: { signature: string; amount: string; asset: string; note: string }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO treasury_events (kind, amount, asset, tx_signature, note) VALUES ('claim', $1, $2, $3, $4)`,
+      [e.amount, e.asset, e.signature, e.note],
+    );
+  }
 }

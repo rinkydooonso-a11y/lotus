@@ -8,10 +8,15 @@ import {
   recordSubmittedSignature,
   setInventoryStatus,
 } from '@lotus/server';
-import { loadConfig } from './config.js';
+import { loadConfig, parseSecretKey } from './config.js';
 import { collectionOf, dasGetAssetsByOwner } from './das.js';
 import { runInventorySync } from './inventorySync.js';
-import { acquireSingletonLock, PgSyncStore, PgTxLog } from './pg.js';
+import { Keypair } from '@solana/web3.js';
+import { acquireSingletonLock, PgClaimLog, PgSyncStore, PgTopUpStore, PgTxLog } from './pg.js';
+import { createSquadsGateway } from './squads.js';
+import { runTopUpTick } from './topUp.js';
+import { runFeeClaimTick } from './feeClaimer.js';
+import { createPumpFeeGateway } from './pumpFees.js';
 import { MAX_QUEUE_ATTEMPTS, runPrizeSenderTick } from './prizeSender.js';
 import { createSolanaChain } from './solanaChain.js';
 import { jsonLogger as log, type PrizeQueue } from './types.js';
@@ -22,7 +27,10 @@ import { jsonLogger as log, type PrizeQueue } from './types.js';
  * over Inngest/Trigger.dev because it needs no extra account and the prize sender wants a
  * long-lived process holding a DB lock.
  *
- *   tsx src/main.ts all | prize-sender | inventory-sync | maintenance
+ *   tsx src/main.ts all | prize-sender | inventory-sync | maintenance | top-up | fee-claimer
+ *
+ * 'all' includes top-up only when SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY are set,
+ * and fee-claimer only when PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY are set.
  */
 
 function loop(name: string, intervalMs: number, tick: () => Promise<void>, signal: AbortSignal): Promise<void> {
@@ -43,7 +51,7 @@ function loop(name: string, intervalMs: number, tick: () => Promise<void>, signa
 
 async function main() {
   const mode = process.argv[2] ?? 'all';
-  if (!['all', 'prize-sender', 'inventory-sync', 'maintenance'].includes(mode)) {
+  if (!['all', 'prize-sender', 'inventory-sync', 'maintenance', 'top-up', 'fee-claimer'].includes(mode)) {
     throw new Error(`unknown mode ${mode}`);
   }
   const config = loadConfig();
@@ -96,6 +104,66 @@ async function main() {
     loops.push(loop('expire-crates', 60_000, async () => {
       const n = await expireStaleCrates(db);
       if (n) log.info('expired stale crates', { count: n });
+    }, controller.signal));
+  }
+
+  const squadsOn = Boolean(config.SQUADS_MULTISIG_ADDRESS && config.SQUADS_PROPOSER_SECRET_KEY);
+  if (mode === 'top-up' && !squadsOn) throw new Error('top-up needs SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY');
+  if ((mode === 'all' || mode === 'top-up') && squadsOn) {
+    const multisigAddress = config.SQUADS_MULTISIG_ADDRESS!;
+    const squads = await createSquadsGateway({
+      rpcUrl: config.SOLANA_RPC_URL,
+      multisigAddress,
+      proposer: Keypair.fromSecretKey(parseSecretKey(config.SQUADS_PROPOSER_SECRET_KEY!, 'SQUADS_PROPOSER_SECRET_KEY')),
+      hotWallet: chain.hotWallet,
+      expectedVault: config.SQUADS_VAULT_ADDRESS,
+      allowMainnet: config.LOTUS_ALLOW_MAINNET,
+      getAsset: (mint) => chain.getAsset(mint),
+      log,
+    });
+    log.info('top-up proposer on', { multisig: multisigAddress, vault: squads.vault });
+    const deps = {
+      store: new PgTopUpStore(db, multisigAddress),
+      squads,
+      policy: {
+        targets: config.TOPUP_TARGETS,
+        maxCards: config.TOPUP_MAX_CARDS,
+        maxUsd: config.TOPUP_MAX_USD,
+        minHotLamports: BigInt(Math.round(config.TOPUP_MIN_HOT_SOL * 1e9)),
+        solTopUpLamports: BigInt(Math.round(config.TOPUP_SOL_AMOUNT * 1e9)),
+      },
+      log,
+    };
+    loops.push(loop('top-up', config.TOPUP_INTERVAL_MS, async () => {
+      const r = await runTopUpTick(deps);
+      if (r.kind !== 'idle' || r.skippedByCap) log.info('top-up tick', r);
+    }, controller.signal));
+  }
+
+  const feesOn = Boolean(config.PUMP_COIN_MINT && config.FEE_CLAIMER_SECRET_KEY);
+  if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY');
+  if ((mode === 'all' || mode === 'fee-claimer') && feesOn) {
+    const vault = config.SQUADS_VAULT_ADDRESS!;
+    const gateway = await createPumpFeeGateway({
+      rpcUrl: config.SOLANA_RPC_URL,
+      coinMint: config.PUMP_COIN_MINT!,
+      vault,
+      payer: Keypair.fromSecretKey(parseSecretKey(config.FEE_CLAIMER_SECRET_KEY!, 'FEE_CLAIMER_SECRET_KEY')),
+      allowMainnet: config.LOTUS_ALLOW_MAINNET,
+      priorityFeeMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS,
+    });
+    log.info('fee claimer on', { coin: config.PUMP_COIN_MINT, vault });
+    const deps = {
+      gateway,
+      claims: new PgClaimLog(db),
+      vault,
+      minClaim: BigInt(config.FEE_CLAIM_MIN_BASE_UNITS),
+      minGasLamports: BigInt(Math.round(config.FEE_CLAIMER_MIN_GAS_SOL * 1e9)),
+      log,
+    };
+    loops.push(loop('fee-claimer', config.FEE_CLAIM_INTERVAL_MS, async () => {
+      const r = await runFeeClaimTick(deps);
+      if (r.kind !== 'below_minimum') log.info('fee claim tick', r);
     }, controller.signal));
   }
 
