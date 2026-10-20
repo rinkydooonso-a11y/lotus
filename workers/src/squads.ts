@@ -40,7 +40,7 @@ export interface SquadsConfig {
  * multisig with a config authority (one key could rewrite members and threshold without votes),
  * a threshold below the minimum, or a proposer that can vote or execute.
  */
-function assertSafeMultisig(ms: multisig.accounts.Multisig, proposer: PublicKey, minThreshold: number): void {
+export function assertSafeMultisig(ms: multisig.accounts.Multisig, proposer: PublicKey, minThreshold: number): void {
   if (!ms.configAuthority.equals(PublicKey.default)) {
     throw new Error(`multisig has config authority ${ms.configAuthority.toBase58()}; use an autonomous multisig (no config authority)`);
   }
