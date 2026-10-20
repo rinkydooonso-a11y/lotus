@@ -6,14 +6,14 @@ import { CaChip, XButton } from "@/components/CaChip";
 import { FeeFlow, SiteFooter } from "@/components/Docs";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "$CQ · CardQuest" };
+export const metadata: Metadata = { title: `${LINKS.ticker} · CardQuest` };
 
 export default async function Coin() {
   const vault = await game.vaultStats();
   return (
     <div className="docs">
       <section className="docs-hero">
-        <h1>$CQ</h1>
+        <h1>{LINKS.ticker}</h1>
         <p className="docs-lede">The CardQuest coin. Every trade pays a creator fee, and that fee buys the graded cards hiding in the crates. More trading, fuller vault.</p>
         <div className="row-gap"><CaChip full /><XButton /></div>
         {coinLive ? <a className="pill primary wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Buy on pump.fun</a> : <span className="pill wide disabled">Launching soon</span>}

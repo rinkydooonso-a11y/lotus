@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LINKS } from "@/lib/links";
 
 export const NAV = [
   { href: "/how", label: "How it works" },
   { href: "/history", label: "Prizes" },
   { href: "/vault", label: "Vault" },
-  { href: "/coin", label: "$CQ" },
+  { href: "/coin", label: LINKS.ticker },
   { href: "/stats", label: "Live stats" },
 ];
 

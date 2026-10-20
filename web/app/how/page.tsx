@@ -78,7 +78,7 @@ export default function How() {
         <ol className="rule-cards">{rules.map(([t, d], i) => <li key={t}><span className="rule-n">{i + 1}</span><b>{t}</b><p>{d}</p></li>)}</ol>
       </section>
 
-      <section id="coin"><h2>$CQ</h2>
+      <section id="coin"><h2>{LINKS.ticker}</h2>
         <p>The CardQuest coin&apos;s trading fees stock the vault. This is not financial advice, and nothing here promises any price.</p>
         <CaChip full />
       </section>

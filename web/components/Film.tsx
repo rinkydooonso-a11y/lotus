@@ -4,6 +4,7 @@ import maplibregl from "maplibre-gl";
 import { cityByName, useCity } from "@/lib/cityStore";
 import { Mark } from "./Logo";
 import { QrCard } from "./QrCard";
+import { LINKS } from "@/lib/links";
 
 /** Open the "How CardQuest works" film from anywhere. */
 export const openFilm = () => window.dispatchEvent(new Event("cq:film"));
@@ -19,7 +20,7 @@ const CHAPTERS: Chapter[] = [
   { name: "Pull", title: "Pull a graded slab.", caption: "Professionally graded, insured, and yours the second it flips.", map: false, stage: "card" },
   { name: "Tiers", title: "Grail down to common.", caption: "Four tiers, one public vault. You can check every card before you walk.", map: false, stage: "tiers" },
   { name: "Keep", title: "It lands in your wallet.", caption: "Keep it, sell it, or redeem it on Collector Crypt and get the slab shipped.", map: false, stage: "wallet" },
-  { name: "Vault", title: "Every trade fills the vault.", caption: "Creator fees from $CQ trading buy the cards that go into the crates.", map: false, stage: "flow" },
+  { name: "Vault", title: "Every trade fills the vault.", caption: `Creator fees from ${LINKS.ticker} trading buy the cards that go into the crates.`, map: false, stage: "flow" },
   { name: "Play", title: "Your first crate is waiting.", caption: "CardQuest plays on your phone. Scan this to open it there.", map: true, stage: "qr" },
 ];
 
@@ -48,7 +49,7 @@ function Stage({ stage, p }: { stage: string; p: number }) {
     case "wallet":
       return <div className="fs fs-wallet"><div className="slab s-grail lg"><div className="slab-label"><span>PSA 10</span></div><div className="slab-art"><i /></div></div><span className="fs-arrow" style={{ opacity: Math.min(1, p * 2) }}>→</span><div className="fs-walletbox" style={{ opacity: Math.min(1, p * 2) }}><b>Your wallet</b><span>Received 1 NFT</span></div></div>;
     case "flow":
-      return <div className="fs fs-flow"><div className="flow-node"><b>Every $CQ trade</b><span>on pump.fun</span></div><span className="fs-dots" /><div className="flow-tag">creator fee</div><span className="fs-dots" /><div className="flow-node"><b>Treasury</b><span>swapped to USDC</span></div><span className="fs-dots" /><div className="flow-node vault"><b>The vault</b><span>fills the crates</span></div></div>;
+      return <div className="fs fs-flow"><div className="flow-node"><b>Every {LINKS.ticker} trade</b><span>on pump.fun</span></div><span className="fs-dots" /><div className="flow-tag">creator fee</div><span className="fs-dots" /><div className="flow-node"><b>Treasury</b><span>swapped to USDC</span></div><span className="fs-dots" /><div className="flow-node vault"><b>The vault</b><span>fills the crates</span></div></div>;
     case "qr":
       return <div className="fs fs-qr"><QrCard className="film-qr" /></div>;
     default:
