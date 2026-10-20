@@ -85,6 +85,12 @@ async function main() {
     const connectLock = async () => {
       const c = new pg.Client({ connectionString: lockUrl, ssl: pgSsl(lockUrl), connectionTimeoutMillis: 10_000, keepAlive: true });
       await c.connect();
+      // If this machine dies without closing the socket, Postgres must notice fast or the orphaned backend keeps
+      // the lock and the next worker can't start. Server-side keepalives drop a dead peer in ~25 s; as a backstop,
+      // idle_session_timeout ends a session that sends nothing for 60 s (the lock heartbeat runs every 15 s).
+      await c.query(
+        "SET tcp_keepalives_idle = 10; SET tcp_keepalives_interval = 5; SET tcp_keepalives_count = 3; SET idle_session_timeout = '60s'",
+      );
       return c;
     };
     releaseLock = await acquireSingletonLock(connectLock, 'lotus:prize-sender', {
