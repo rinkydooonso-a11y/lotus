@@ -15,7 +15,7 @@ const STYLE: maplibregl.StyleSpecification = {
   sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" } },
   layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.5, "raster-brightness-max": 0.85 } }],
 };
-const PING_EVERY_MS = 5000;
+const PING_EVERY_MS = 15000;
 
 interface Fix { lat: number; lng: number; acc: number }
 

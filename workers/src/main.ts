@@ -5,6 +5,7 @@ import {
   markPrizeFailed,
   markPrizeSent,
   pgSsl,
+  pruneLocationPings,
   recordSubmittedSignature,
   setInventoryStatus,
 } from '@lotus/server';
@@ -47,7 +48,9 @@ async function main() {
     throw new Error(`unknown mode ${mode}`);
   }
   const config = loadConfig();
-  const db = new pg.Pool({ connectionString: config.DATABASE_URL, ssl: pgSsl(config.DATABASE_URL), max: 10 });
+  const db = new pg.Pool({ connectionString: config.DATABASE_URL, ssl: pgSsl(config.DATABASE_URL), max: 10, connectionTimeoutMillis: 10_000 });
+  // An idle connection dropped by the pooler emits 'error' on the pool; unhandled, it would crash every loop.
+  db.on('error', (err) => log.error('pg pool idle client error', { error: err.message }));
   const chain = await createSolanaChain(config);
   log.info('workers starting', { mode, hotWallet: chain.hotWallet });
 
@@ -93,6 +96,10 @@ async function main() {
     loops.push(loop('expire-crates', 60_000, async () => {
       const n = await expireStaleCrates(db);
       if (n) log.info('expired stale crates', { count: n });
+    }, controller.signal));
+    loops.push(loop('prune-pings', 3_600_000, async () => {
+      const n = await pruneLocationPings({ retentionDays: config.PING_RETENTION_DAYS }, db);
+      if (n) log.info('pruned old location pings', { count: n });
     }, controller.signal));
   }
 

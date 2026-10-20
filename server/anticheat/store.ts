@@ -28,7 +28,15 @@ export function upstashKV(
   token = process.env.UPSTASH_REDIS_REST_TOKEN,
 ): KV {
   if (!url || !token) throw new Error("UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set");
-  const r = new Redis({ url, token, automaticDeserialization: false });
+  // Short timeout and one retry: a slow Redis makes opens fail fast (closed) instead of hanging the request.
+  const timeoutMs = Number(process.env.UPSTASH_TIMEOUT_MS ?? 1500);
+  const r = new Redis({
+    url,
+    token,
+    automaticDeserialization: false,
+    retry: { retries: 1, backoff: () => 100 },
+    signal: () => AbortSignal.timeout(timeoutMs),
+  });
   return {
     get: async (k) => {
       const v = await r.get<string>(k);
