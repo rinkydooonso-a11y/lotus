@@ -1,4 +1,4 @@
-import type { AdminInventoryItem, Balances, Crate, FlaggedPlayer, HistoryEntry, LocationPing, OddsRow, OpenResult, VaultStats } from "../types";
+import type { AdminInventoryItem, Balances, Crate, Feed, FlaggedPlayer, HistoryEntry, LocationPing, OddsRow, OpenResult, VaultStats } from "../types";
 
 /**
  * The only surface the web app uses to talk to the game server.
@@ -13,6 +13,8 @@ export interface GameServer {
   balances(playerId: string): Promise<Balances>;
   history(playerId: string): Promise<HistoryEntry[]>;
   vaultStats(): Promise<VaultStats>;
+  /** Public, read-only feed of recent and biggest card pulls. */
+  feed(): Promise<Feed>;
   admin: {
     inventory(): Promise<AdminInventoryItem[]>;
     addItem(item: { nftMint: string; cardName: string; grade?: string; valueUsd: number; imageUrl?: string }): Promise<{ id: string }>;

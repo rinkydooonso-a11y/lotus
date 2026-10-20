@@ -5,16 +5,60 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useAuth } from "@/lib/auth/client";
 import { haversineM, OPEN_RADIUS_M } from "@/lib/geo";
 import { deviceId } from "@/lib/device";
+import { SERVICE_CITIES } from "@/lib/cities";
 import type { Crate, OpenResult } from "@/lib/types";
 import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
+import { RotatingCity } from "./RotatingCity";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
-const STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" } },
-  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.5, "raster-brightness-max": 0.85 } }],
-};
+const STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/dark";
+const PITCH_3D = 45;
+
+/** Swap the flat building fill for extruded buildings (OpenFreeMap/OpenMapTiles schema). */
+function add3dBuildings(m: maplibregl.Map) {
+  if (m.getLayer("building-3d")) return;
+  const flat = m.getLayer("building") as { source?: string; minzoom?: number } | undefined;
+  const source = flat?.source ?? "openmaptiles";
+  if (!m.getSource(source)) return;
+  if (flat) m.setLayoutProperty("building", "visibility", "none");
+  // Lift roads and street names slightly so the neutral dark base stays readable under the extrusions.
+  const set = (id: string, prop: string, v: string) => { if (m.getLayer(id)) m.setPaintProperty(id, prop, v); };
+  set("highway_minor", "line-color", "#2e2e31");
+  set("highway_major_inner", "line-color", "#3a3a3d");
+  set("highway_major_subtle", "line-color", "#3a3a3d");
+  set("highway_path", "line-color", "#2a2a2d");
+  set("highway_name_other", "text-color", "#8a8a8e");
+  set("highway_name_motorway", "text-color", "#8a8a8e");
+  m.addLayer({
+    id: "building-3d", type: "fill-extrusion", source, "source-layer": "building", minzoom: 14,
+    paint: {
+      "fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 0], 0, "#151516", 60, "#1c1c1e", 200, "#262628"],
+      "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
+      "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+      "fill-extrusion-opacity": 0.9,
+    },
+  });
+}
+/** Glowing launch-city dots and labels, drawn on the GPU so the spinning globe stays smooth. Hidden once zoomed into streets. */
+function addCityLayers(m: maplibregl.Map) {
+  if (m.getSource("cities")) return;
+  m.addSource("cities", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: SERVICE_CITIES.map((c) => ({ type: "Feature", properties: { name: c.name }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) },
+  });
+  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 10, 6, 28], "circle-color": "#a463ff", "circle-opacity": 0.35, "circle-blur": 1 } });
+  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#a463ff", "circle-stroke-width": 2.5 } });
+  if (!m.getStyle().glyphs) return;
+  m.addLayer({
+    id: "cities-label", type: "symbol", source: "cities", minzoom: 1.2, maxzoom: 10,
+    layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Bold"], "text-size": 13, "text-offset": [0, 1.3], "text-anchor": "top", "text-letter-spacing": 0.04 },
+    paint: { "text-color": "#f5f4f8", "text-halo-color": "#0b0b0d", "text-halo-width": 1.6 },
+  });
+}
+function flyToCity(m: maplibregl.Map, center: [number, number]) {
+  m.flyTo({ center, zoom: 12, duration: 3200, curve: 1.6, essential: true });
+}
 const PING_EVERY_MS = 5000;
 
 interface Fix { lat: number; lng: number; acc: number }
@@ -26,6 +70,7 @@ export default function MapView() {
   const me = useRef<maplibregl.Marker | null>(null);
   const markers = useRef<Map<string, maplibregl.Marker>>(new Map());
   const centered = useRef(false);
+  const spinning = useRef(true);
   const lastPing = useRef(0);
   const [fix, setFix] = useState<Fix | null>(null);
   const [geoErr, setGeoErr] = useState<string | null>(null);
@@ -35,17 +80,52 @@ export default function MapView() {
   const [result, setResult] = useState<OpenResult | null>(null);
   const [connect, setConnect] = useState(false);
   const walletBrowser = useInWalletBrowser();
+  const [tilt, setTilt] = useState(false);
+  const [outside, setOutside] = useState<{ name: string; km: number } | null>(null);
   const fixRef = useRef<Fix | null>(null);
   fixRef.current = fix;
 
   const body = useCallback((f: Fix) => ({ lat: f.lat, lng: f.lng, accuracyM: f.acc, ts: Date.now(), deviceId: deviceId() }), []);
 
-  // map init
+  // map init: starts as a slowly spinning globe with the launch cities lit up, then flies down to the player
   useEffect(() => {
     if (!el.current) return;
-    const m = new maplibregl.Map({ container: el.current, style: STYLE, center: [-6.26, 53.35], zoom: 15, attributionControl: { compact: true } });
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const m = new maplibregl.Map({
+      container: el.current, style: STYLE_URL, center: [-30, 30], zoom: window.innerWidth < 640 ? 0.9 : 1.6, pitch: 0, maxPitch: 70,
+      // Cap the render resolution so 3x phones stay smooth.
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: 150, attributionControl: { compact: true },
+    });
+    m.on("style.load", () => {
+      m.setProjection({ type: "globe" });
+      m.setSky({ "sky-color": "#0b0b0d", "horizon-color": "#3a1d6e", "fog-color": "#0b0b0d", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.45, 5, 0.25, 8, 0] });
+      addCityLayers(m);
+      try { add3dBuildings(m); } catch { /* flat buildings are fine */ }
+    });
+    m.on("click", "cities-dot", (e) => {
+      const f = e.features?.[0];
+      if (f?.geometry.type === "Point") flyToCity(m, f.geometry.coordinates as [number, number]);
+    });
+    m.on("mouseenter", "cities-dot", () => { m.getCanvas().style.cursor = "pointer"; });
+    m.on("mouseleave", "cities-dot", () => { m.getCanvas().style.cursor = ""; });
+
+    // Idle spin until someone touches the map or we know where the player is.
+    let raf = 0, last = 0;
+    const spin = (t: number) => {
+      if (spinning.current && !m.isMoving() && m.getZoom() < 4) m.setCenter([m.getCenter().lng + ((t - (last || t)) / 1000) * 5, m.getCenter().lat]);
+      last = t;
+      raf = requestAnimationFrame(spin);
+    };
+    const stop = () => { spinning.current = false; };
+    m.on("mousedown", stop); m.on("touchstart", stop); m.on("wheel", stop);
+    if (!reduced) raf = requestAnimationFrame(spin);
+
+    // Keep the player centred in the part of the map not covered by the desktop side panels (see .side in globals.css).
+    const pad = () => { const w = window.innerWidth; m.setPadding({ top: 0, bottom: 0, left: w >= 900 ? 442 : 0, right: w >= 1240 ? 452 : 0 }); };
+    pad();
+    window.addEventListener("resize", pad);
     map.current = m;
-    return () => { m.remove(); map.current = null; };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", pad); m.remove(); map.current = null; };
   }, []);
 
   // live location
@@ -66,9 +146,15 @@ export default function MapView() {
     if (!me.current) {
       const d = document.createElement("div");
       d.className = "me";
+      d.innerHTML = "<i></i><b></b>";
       me.current = new maplibregl.Marker({ element: d }).setLngLat([fix.lng, fix.lat]).addTo(m);
     } else me.current.setLngLat([fix.lng, fix.lat]);
-    if (!centered.current) { centered.current = true; m.jumpTo({ center: [fix.lng, fix.lat], zoom: 17 }); }
+    if (!centered.current) {
+      centered.current = true;
+      spinning.current = false;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) m.jumpTo({ center: [fix.lng, fix.lat], zoom: 17 });
+      else m.flyTo({ center: [fix.lng, fix.lat], zoom: 17, duration: 4000, curve: 1.7, essential: true });
+    }
   }, [fix]);
 
   // throttled crate fetch (also acts as the location ping)
@@ -79,7 +165,7 @@ export default function MapView() {
     lastPing.current = now;
     void fetch("/api/crates", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(fix)) })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { crates: Crate[] } | null) => { if (j) setCrates(j.crates); })
+      .then((j: { crates: Crate[]; outside?: boolean; nearest?: { name: string; km: number } } | null) => { if (j) { setCrates(j.crates); setOutside(j.outside && j.nearest ? j.nearest : null); } })
       .catch(() => undefined);
   }, [fix, user, body]);
 
@@ -93,11 +179,11 @@ export default function MapView() {
       let mk = markers.current.get(c.id);
       if (!mk) {
         const d = document.createElement("button");
-        d.className = "crate" + (c.kind === "ticket" ? " ticket" : "");
-        d.setAttribute("aria-label", "Crate");
-        d.textContent = c.kind === "ticket" ? "🎟" : "🎁";
+        d.className = "pin" + (c.kind === "ticket" ? " ticket" : "");
+        d.setAttribute("aria-label", c.kind === "ticket" ? "Ticket crate" : "Crate");
+        d.innerHTML = `<span>${c.kind === "ticket" ? "🎟" : "🎁"}</span><b>${c.kind === "ticket" ? "Ticket" : "Crate"}</b>`;
         d.onclick = (e) => { e.stopPropagation(); setSel(c.id); };
-        mk = new maplibregl.Marker({ element: d }).setLngLat([c.lng, c.lat]).addTo(m);
+        mk = new maplibregl.Marker({ element: d, anchor: "top", offset: [0, -24] }).setLngLat([c.lng, c.lat]).addTo(m);
         markers.current.set(c.id, mk);
       }
     }
@@ -136,22 +222,34 @@ export default function MapView() {
     }
   };
 
-  const recenter = () => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17 }); };
+  const recenter = () => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17, pitch: tilt ? PITCH_3D : 0 }); };
+  const toggleTilt = () => {
+    const next = !tilt;
+    setTilt(next);
+    map.current?.easeTo({ pitch: next ? PITCH_3D : 0, bearing: next ? map.current.getBearing() : 0, duration: 600 });
+  };
 
   return (
     <div className="mapwrap">
       <div ref={el} className="map" onClick={() => setSel(null)} />
-      <button className="fab" onClick={recenter} aria-label="Center on me">⌖</button>
+      <div className="mapctl">
+        <button onClick={() => map.current?.zoomIn()} aria-label="Zoom in">+</button>
+        <button onClick={() => map.current?.zoomOut()} aria-label="Zoom out">−</button>
+        <button className={tilt ? "on" : ""} onClick={toggleTilt} aria-label="Toggle 3D view">3D</button>
+        <button onClick={recenter} aria-label="Center on me" disabled={!fix}>⌖</button>
+      </div>
       {balances && balances.tickets > 0 && <button className="fab ticketfab" onClick={() => void useTicket()}>🎟 Use ticket</button>}
 
       {!user && !loading && (
-        <div className="cta">
-          <h2>Hunt real cards.</h2>
-          <p className="muted">Walk to crates near you. Open them for a shot at graded trading cards.</p>
-          {walletBrowser ? <WalletBrowserNotice /> : <button className="btn" onClick={() => setConnect(true)}>Connect wallet to play</button>}
-        </div>
+        walletBrowser ? <div className="cta"><WalletBrowserNotice /></div> : (
+          <div className="cta intro">
+            <h2>Graded cards are dropping in <RotatingCity /></h2>
+            <p className="muted">Walk to a crate, open it, and you could pull a real slabbed card.</p>
+            <button className="btn wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
+          </div>
+        )
       )}
-      {user && geoErr && !(user.isAdmin && !fix) && <div className="cta"><p>{geoErr}</p></div>}
+      {user && geoErr && !(user.isAdmin && !fix) && <div className="cta"><p className="muted">{geoErr}</p></div>}
       {user && !fix && (
         <div className="cta">
           {walletBrowser ? <WalletBrowserNotice /> : !geoErr && <p className="muted">Finding you…</p>}
@@ -166,16 +264,25 @@ export default function MapView() {
           )}
         </div>
       )}
-      {user && fix && crates.length === 0 && !target && <div className="toast">Looking for crates nearby…</div>}
+      {user && fix && outside && crates.length === 0 && (
+        <div className="cta away">
+          <p className="eyebrow">Not live here yet</p>
+          <h2>No crates in your area <em>yet.</em></h2>
+          <p className="muted">CardQuest is launching city by city. Crates are dropping in {SERVICE_CITIES.length} cities right now, and the closest to you is <b>{outside.name}</b>, about {outside.km.toLocaleString("en-US")} km away. More cities open as the vault grows.</p>
+          <div className="city-chips">{SERVICE_CITIES.map((c) => <button key={c.name} className={c.name === outside.name ? "on" : ""} onClick={() => map.current && flyToCity(map.current, [c.lng, c.lat])}>{c.name}</button>)}</div>
+        </div>
+      )}
+      {user && fix && !outside && crates.length === 0 && !target && <div className="toast">Looking for crates nearby…</div>}
 
       {target && (
         <div className="drawer">
           <div className="dline">
-            <div className="crate-lg">{target.kind === "ticket" ? "🎟" : "🎁"}</div>
-            <div>
-              <strong>{target.kind === "ticket" ? "Ticket crate" : "Crate"}</strong>
+            <div className={`crate-lg${target.kind === "ticket" ? " ticket" : ""}`}>{target.kind === "ticket" ? "🎟" : "🎁"}</div>
+            <div className="grow">
+              <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
               <div className="muted small">{dist === null ? "…" : near ? "You're in range" : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</div>
             </div>
+            <button className="x" onClick={() => setSel(null)} aria-label="Close">✕</button>
           </div>
           <button className="btn wide" disabled={!near || opening} onClick={() => void open()}>{opening ? "Opening…" : near ? "Open crate" : "Walk closer"}</button>
         </div>

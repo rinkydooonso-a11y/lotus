@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletReadyState } from "@solana/wallet-adapter-base";
 import { useAuth } from "@/lib/auth/client";
+import { Mark } from "./Logo";
 
 export function ConnectSheet({ onClose }: { onClose?: () => void }) {
   const { wallets, select, connect, wallet, connecting } = useWallet();
@@ -15,11 +16,13 @@ export function ConnectSheet({ onClose }: { onClose?: () => void }) {
     setTimeout(() => { void connect().then(() => onClose?.()).catch(() => undefined); }, 50);
   };
   return (
-    <div className="sheet-back" onClick={onClose}>
+    <div className="sheet-back modal" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="grab" />
+        <button className="x" onClick={onClose} aria-label="Close">✕</button>
+        <div className="sheet-mark"><Mark size={44} /></div>
         <h2>Connect a wallet</h2>
-        <p className="muted">Sign a free message to log in. No transaction, no fees.</p>
+        <p className="muted">Sign a free message to start hunting. No transaction, no fees.</p>
         <div className="stack">
           {wallets.map((w) => {
             // In a phone browser the adapter would reopen the site inside Phantom's browser, where location
@@ -31,7 +34,7 @@ export function ConnectSheet({ onClose }: { onClose?: () => void }) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={w.adapter.icon} alt="" width={28} height={28} />
                 <span>{w.adapter.name}</span>
-                <span className="muted small">{viaDeeplink ? "Open app" : installed ? (connecting && wallet?.adapter.name === w.adapter.name) || busy ? "Connecting…" : "Detected" : "Install"}</span>
+                <span className={installed ? "chip ok" : "chip"}>{viaDeeplink ? "Open app" : installed ? (connecting && wallet?.adapter.name === w.adapter.name) || busy ? "Connecting…" : "Detected" : "Install"}</span>
               </button>
             );
           })}

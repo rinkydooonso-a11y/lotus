@@ -13,20 +13,20 @@ export default async function Vault() {
   const v = await game.vaultStats();
   return (
     <div className="page">
-      <h1>Vault</h1>
-      <p className="muted">Everything here is live and public. We never award a card the vault doesn&apos;t hold.</p>
+      <h1>The <em>vault.</em></h1>
+      <p className="muted lede">Everything here is live and public. We never award a card the vault doesn&apos;t hold.</p>
       <div className="stats">
-        <div className="stat"><b>{v.cardsInVault}</b><span>cards in vault</span></div>
-        <div className="stat"><b>${Math.round(v.totalValueUsd).toLocaleString()}</b><span>insured value</span></div>
-        <div className="stat"><b>{v.cardsSent}</b><span>cards sent</span></div>
+        <div className="stat"><span>Cards in vault</span><b>{v.cardsInVault}</b></div>
+        <div className="stat"><span>Insured value</span><b>${Math.round(v.totalValueUsd).toLocaleString()}</b></div>
+        <div className="stat"><span>Cards sent</span><b>{v.cardsSent}</b></div>
       </div>
       <h2>Prize tiers and odds</h2>
       <ul className="list">
         {TIERS.map(({ t, label, band }) => (
           <li key={t} className="item">
-            <div className={`ico b-${t}`}>🃏</div>
-            <div className="grow"><strong>{label}</strong><div className="muted small">{band} · {v.byTier[t].count} in vault</div></div>
-            <div><b>{(v.byTier[t].odds * 100).toFixed(2)}%</b><div className="muted small">per crate</div></div>
+            <span className={`dot b-${t}`} />
+            <div className="grow"><strong className={`tc-${t}`}>{label}</strong><div className="muted small">{band} · {v.byTier[t].count} in vault</div></div>
+            <div className="right"><b>{(v.byTier[t].odds * 100).toFixed(2)}%</b><div className="muted small">per crate</div></div>
           </li>
         ))}
       </ul>
@@ -35,7 +35,7 @@ export default async function Vault() {
       {v.recentTreasury.length === 0 ? <p className="muted">Nothing yet.</p> : (
         <ul className="list">
           {v.recentTreasury.map((e, i) => (
-            <li key={i} className="item"><div className="grow"><strong>{e.kind}</strong><div className="muted small">{e.note}</div></div><div className="muted small">{new Date(e.at).toLocaleDateString()}</div></li>
+            <li key={i} className="item"><div className="grow"><strong className="cap">{e.kind}</strong><div className="muted small">{e.note}</div></div><div className="muted small">{new Date(e.at).toLocaleDateString()}</div></li>
           ))}
         </ul>
       )}

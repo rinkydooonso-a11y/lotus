@@ -3,6 +3,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { ConnectSheet } from "./ConnectSheet";
+import { Logo } from "./Logo";
+import { NavLinks } from "./Nav";
 
 export function Header() {
   const { user, balances, signOut, loading } = useAuth();
@@ -10,7 +12,8 @@ export function Header() {
   const [menu, setMenu] = useState(false);
   return (
     <header className="top">
-      <Link href="/" className="brand"><span className="lotus">✿</span> Lotus</Link>
+      <Link href="/" className="brand" aria-label="CardQuest home"><Logo /></Link>
+      <NavLinks />
       <div className="grow" />
       {user && balances && (
         <div className="pills">
@@ -21,7 +24,7 @@ export function Header() {
       {!loading && !user && <button className="btn sm" onClick={() => setOpen(true)}>Connect</button>}
       {user && (
         <div className="menu-wrap">
-          <button className="btn ghost sm" onClick={() => setMenu((m) => !m)}>{user.address.slice(0, 4)}…{user.address.slice(-4)}</button>
+          <button className="btn ghost sm addr" onClick={() => setMenu((m) => !m)}><span className="avatar" /><span className="addr-t">{user.address.slice(0, 4)}…{user.address.slice(-4)}</span></button>
           {menu && (
             <div className="menu" onClick={() => setMenu(false)}>
               {user.isAdmin && <Link href="/admin">Admin</Link>}

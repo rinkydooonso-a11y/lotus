@@ -42,7 +42,7 @@ export default function Admin() {
 
   return (
     <div className="page wide">
-      <h1>Admin</h1>
+      <h1>Admin <em>console.</em></h1>
       <h2>Odds (parts per 1,000,000)</h2>
       <div className="card">
         {odds.map((r, i) => (
@@ -65,9 +65,9 @@ export default function Admin() {
         ))}
         <div className="dline"><button className="btn sm" onClick={() => void addItem()}>Add card (tier set from value)</button></div>
       </div>
-      <div className="tablewrap"><table>
+      <div className="tablewrap card"><table>
         <thead><tr><th>Card</th><th>Grade</th><th>Tier</th><th>Value</th><th>Status</th><th></th></tr></thead>
-        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td>{i.tier}</td><td>${i.valueUsd}</td><td>{i.status}</td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
+        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td><span className={`tc-${i.tier}`}>{i.tier}</span></td><td>${i.valueUsd}</td><td><span className="tag">{i.status}</span></td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
       </table></div>
     </div>
   );

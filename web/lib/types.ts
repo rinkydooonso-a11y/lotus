@@ -64,3 +64,28 @@ export interface FlaggedPlayer {
   frozen: boolean;
   flaggedAt: string;
 }
+
+/** A public card pull for the live feed. Wallets are masked server-side. */
+export interface FeedPull {
+  id: string;
+  at: string;
+  cardName: string;
+  grade: string;
+  valueUsd: number;
+  tier: Tier;
+  imageUrl?: string;
+  collector: string;
+  crateKind: Crate["kind"];
+}
+
+export interface FeedCollector {
+  collector: string;
+  cards: number;
+  totalUsd: number;
+}
+
+export interface Feed {
+  recent: FeedPull[];
+  biggest: FeedPull[];
+  collectors: FeedCollector[];
+}

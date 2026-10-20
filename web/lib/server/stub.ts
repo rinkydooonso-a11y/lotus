@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from "crypto";
 import { haversineM, OPEN_RADIUS_M } from "../geo";
-import type { AdminInventoryItem, Crate, FlaggedPlayer, HistoryEntry, OddsRow, Tier } from "../types";
+import { SERVICE_CITIES } from "../cities";
+import type { AdminInventoryItem, Crate, FeedPull, FlaggedPlayer, HistoryEntry, OddsRow, Tier } from "../types";
 import type { GameServer } from "./types";
 
 // In-memory stand-in so the UI is fully usable before the real game server exists.
@@ -39,6 +40,22 @@ function spawnAround(playerId: string, lat: number, lng: number): void {
     db.crates.set(id, { id, playerId, lat: lat + dLat, lng: lng + dLng, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), kind: "standard" });
   }
 }
+// Demo pulls so the feed isn't empty in stub mode; real pulls from this process are added on top.
+const BOOT = Date.now();
+const DEMO_PULLS: FeedPull[] = ([
+  ["Umbreon VMAX Alt Art Evolving Skies", "PSA 10", 640, "grail", 7, "ticket", "9xQe…Lk2P"],
+  ["Charizard Base Set Holo", "PSA 7", 420, "grail", 52, "standard", "4w1x…Nm7z"],
+  ["Mewtwo SV Black Star Promo", "PSA 9", 82, "rare", 18, "standard", "Dq8r…a1Fs"],
+  ["Gengar Fossil Holo", "BGS 8.5", 52, "uncommon", 33, "standard", "7Hbn…pQ4e"],
+  ["Lugia Neo Genesis", "CGC 8", 210, "rare", 140, "ticket", "Bv2k…r9Xa"],
+  ["Squirtle Base Set", "PSA 9", 18, "common", 4, "standard", "Kp3m…Wc8d"],
+  ["Pikachu Van Gogh Promo", "PSA 9", 96, "rare", 260, "standard", "4w1x…Nm7z"],
+  ["Eevee Jungle", "CGC 9", 14, "common", 75, "standard", "Ht6y…Zz0q"],
+  ["Monkey D. Luffy OP01 Leader", "PSA 10", 44, "uncommon", 410, "standard", "Dq8r…a1Fs"],
+] as const).map(([cardName, grade, valueUsd, tier, minsAgo, crateKind, collector], i) => ({
+  id: `demo${i}`, at: new Date(BOOT - minsAgo * 60_000).toISOString(), cardName, grade, valueUsd, tier, crateKind, collector,
+}));
+
 function roll(): "shards" | Tier {
   const total = db.odds.reduce((s, r) => s + r.weight, 0);
   let n = (randomInt(1_000_000) / 1_000_000) * total;
@@ -58,7 +75,9 @@ export const stubServer: GameServer = {
   },
   async nearbyCrates(playerId, ping) {
     player(playerId);
-    spawnAround(playerId, ping.lat, ping.lng);
+    // Same launch-city gate as the real server.
+    const inCity = SERVICE_CITIES.some((c) => haversineM(c, ping) <= c.radiusKm * 1000);
+    if (ping.anywhere || process.env.LOTUS_CITY_GATE === "off" || inCity) spawnAround(playerId, ping.lat, ping.lng);
     return [...db.crates.values()]
       .filter((c) => c.playerId === playerId && new Date(c.expiresAt) > new Date() && haversineM(c, ping) < 1500)
       .map(({ playerId: _p, ...c }) => c);
@@ -110,6 +129,20 @@ export const stubServer: GameServer = {
     const total = db.odds.reduce((s, r) => s + r.weight, 0);
     const byTier = Object.fromEntries(TIERS.map((t) => [t, { count: avail.filter((i) => i.tier === t).length, odds: (db.odds.find((r) => r.tier === t)?.weight ?? 0) / total }])) as Record<Tier, { count: number; odds: number }>;
     return { cardsInVault: avail.length, cardsSent: db.inventory.filter((i) => i.status === "sent").length, totalValueUsd: avail.reduce((s, i) => s + i.valueUsd, 0), byTier, recentTreasury: [{ at: new Date().toISOString(), kind: "stub", note: "Stub data (devnet)" }] };
+  },
+  async feed() {
+    const live: FeedPull[] = [];
+    for (const p of db.players.values())
+      for (const h of p.history)
+        if (h.result.kind === "card") live.push({ id: h.id, at: h.at, cardName: h.result.cardName, grade: h.result.grade, valueUsd: h.result.valueUsd, tier: h.result.tier, imageUrl: h.result.imageUrl, collector: `${p.wallet.slice(0, 4)}…${p.wallet.slice(-4)}`, crateKind: "standard" });
+    const all = [...live, ...DEMO_PULLS];
+    const byCollector = new Map<string, { cards: number; totalUsd: number }>();
+    for (const x of all) { const c = byCollector.get(x.collector) ?? { cards: 0, totalUsd: 0 }; c.cards++; c.totalUsd += x.valueUsd; byCollector.set(x.collector, c); }
+    return {
+      recent: [...all].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20),
+      biggest: [...all].sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 20),
+      collectors: [...byCollector].map(([collector, c]) => ({ collector, ...c })).sort((a, b) => b.totalUsd - a.totalUsd).slice(0, 20),
+    };
   },
   admin: {
     async inventory() { return db.inventory; },
