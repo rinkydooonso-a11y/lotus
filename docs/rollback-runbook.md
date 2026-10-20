@@ -42,7 +42,8 @@ Migrations are forward-only and additive. Before applying one to production, tak
 With Supabase Pro: Dashboard > Database > Backups > pick a daily backup > Restore (the project is read-only for a few minutes).
 
 From the nightly GitHub backup (any plan):
-1. Actions > db-backup > latest successful run > download the artifact.
+1. Actions > db-backup > latest successful run > download the artifact (kept 7 days), then decrypt it with the
+   passphrase from your password manager: `gpg --decrypt lotus-<date>.dump.gpg > lotus-<date>.dump`.
 2. Stop the worker (`fly scale count 0`) so nothing writes during the restore.
 3. Restore into a fresh Supabase project first and check it, then point `DATABASE_URL` (Vercel and Fly) at it:
    `pg_restore --no-owner --no-privileges -d "<session pooler URL>" lotus-<date>.dump`
