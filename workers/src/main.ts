@@ -75,8 +75,11 @@ async function main() {
   process.once('SIGINT', shutdown);
 
   if (mode === 'all' || mode === 'prize-sender') {
+    // The lock belongs to the Postgres backend, so take it over a direct connection when one is configured:
+    // through the session pooler a backend (and our lock) can outlive this process and be handed to another client.
+    const lockUrl = config.DATABASE_LOCK_URL ?? config.DATABASE_URL;
     const connectLock = async () => {
-      const c = new pg.Client({ connectionString: config.DATABASE_URL, ssl: pgSsl(config.DATABASE_URL), connectionTimeoutMillis: 10_000, keepAlive: true });
+      const c = new pg.Client({ connectionString: lockUrl, ssl: pgSsl(lockUrl), connectionTimeoutMillis: 10_000, keepAlive: true });
       await c.connect();
       return c;
     };
@@ -88,6 +91,8 @@ async function main() {
         lockLost = true;
         log.error('lost the prize-sender lock; stopping', { reason });
         controller.abort();
+        // Backstop if a tick never returns: exit anyway after the longest legitimate send settles (~140 s).
+        setTimeout(() => process.exit(1), 200_000).unref();
       },
     });
     if (!releaseLock) {
