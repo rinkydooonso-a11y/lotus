@@ -12,7 +12,7 @@ import { ConnectSheet } from "./ConnectSheet";
 import { CitySwap } from "./CitySwap";
 import { CaChip, XButton } from "./CaChip";
 import { Mark } from "./Logo";
-import { cityByName, useCity } from "@/lib/cityStore";
+import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { openFilm } from "./Film";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
@@ -61,8 +61,17 @@ function addCityLayers(m: maplibregl.Map) {
     paint: { "text-color": "#f5f4f8", "text-halo-color": "#0b0b0d", "text-halo-width": 1.6 },
   });
 }
+/** Maps currently running one of our camera flights (padding updates wait for these). */
+const flying = new WeakMap<maplibregl.Map, object>();
+function fly(m: maplibregl.Map, opts: maplibregl.FlyToOptions) {
+  const id = {};
+  // Start first: flyTo stops any running flight, and that flight's moveend must not clear this one.
+  m.flyTo(opts);
+  flying.set(m, id);
+  m.once("moveend", () => { if (flying.get(m) === id) flying.delete(m); });
+}
 function flyToCity(m: maplibregl.Map, c: { lat: number; lng: number }) {
-  m.flyTo({ center: [c.lng, c.lat], zoom: 14.6, pitch: PITCH_3D, bearing: BEARING_3D, duration: 3600, curve: 1.6, essential: true });
+  fly(m, { center: [c.lng, c.lat], zoom: 14.6, pitch: PITCH_3D, bearing: BEARING_3D, duration: 3600, curve: 1.6, essential: true });
 }
 /** Isometric crate marker; colours come from CSS (purple, or gold for ticket crates). */
 const CRATE_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="lid" d="M24 4 43 14.5 24 25 5 14.5z"/><path class="l" d="M5 14.5 24 25v19L5 33.5z"/><path class="r" d="M43 14.5 24 25v19l19-10.5z"/><path class="band" d="M14 9.3 33 19.8v4.4L14 13.7z"/><path class="band" d="M22.6 24.2 24 25l1.4-.8v19l-1.4.8-1.4-.8z"/></svg>`;
@@ -90,6 +99,7 @@ export default function MapView() {
   const [tilt, setTilt] = useState(true);
   const city = useCity();
   const flewToCity = useRef(false);
+  const chips = useRef<HTMLDivElement>(null);
   const [outside, setOutside] = useState<{ name: string; km: number } | null>(null);
   const fixRef = useRef<Fix | null>(null);
   fixRef.current = fix;
@@ -101,7 +111,7 @@ export default function MapView() {
     if (!el.current) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const m = new maplibregl.Map({
-      container: el.current, style: STYLE_URL, center: [-30, 30], zoom: window.innerWidth < 640 ? 0.9 : 1.6, pitch: 0, maxPitch: 70,
+      container: el.current, style: STYLE_URL, center: [-30, 30], zoom: window.innerWidth < 640 ? 0.55 : 1.6, pitch: 0, maxPitch: 70,
       // Cap the render resolution so 3x phones stay smooth.
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: 150, attributionControl: { compact: true },
     });
@@ -113,7 +123,8 @@ export default function MapView() {
     });
     m.on("click", "cities-dot", (e) => {
       const f = e.features?.[0];
-      if (f?.geometry.type === "Point") { const [lng, lat] = f.geometry.coordinates as [number, number]; spinning.current = false; flyToCity(m, { lat, lng }); }
+      const name = f?.properties?.name;
+      if (typeof name === "string") pickCity(name);
     });
     m.on("mouseenter", "cities-dot", () => { m.getCanvas().style.cursor = "pointer"; });
     m.on("mouseleave", "cities-dot", () => { m.getCanvas().style.cursor = ""; });
@@ -129,12 +140,48 @@ export default function MapView() {
     m.on("mousedown", stop); m.on("touchstart", stop); m.on("wheel", stop);
     if (!reduced) raf = requestAnimationFrame(spin);
 
-    // Keep the player centred in the part of the map not covered by the desktop side panels (see .side in globals.css).
-    const pad = () => { const w = window.innerWidth; m.setPadding({ top: 0, bottom: 0, left: w >= 900 ? 442 : 0, right: w >= 1240 ? 452 : 0 }); };
+    // Centre the globe (and later the player or city) in the open part of the screen: between the desktop panels,
+    // below the header and above the city bar; on phones, above the intro card. Measured from the DOM so it follows layout changes.
+    const box = el.current;
+    let padRaf = 0;
+    const pad = () => {
+      if (padRaf) return;
+      padRaf = requestAnimationFrame(() => {
+        padRaf = 0;
+        const W = window.innerWidth, H = window.innerHeight;
+        const vis = (q: string) => { const n = document.querySelector<HTMLElement>(q); if (!n) return null; const r = n.getBoundingClientRect(); return r.width && !n.closest(".exploring") ? r : null; };
+        const l = vis(".desk-left"), r = vis(".desk-side"), b = vis(".desk-bottom"), top = vis(".desk-top") ?? vis(".hud"), intro = vis(".intro-card") ?? vis(".mapwrap .cta") ?? vis(".mapwrap .drawer");
+        // The globe ignores camera padding, so on phones end the map just under the top of the intro card instead;
+        // the globe then sits centred in the space above it. Full height again once the card goes away.
+        const cut = W < 900 && intro ? `${Math.max(0, Math.round(H - intro.top - 40))}px` : "";
+        if (box.style.bottom !== cut) { box.style.bottom = cut; m.resize(); }
+        const p = {
+          left: l ? Math.round(l.right) : 0,
+          right: r ? Math.round(W - r.left) : 0,
+          top: top ? Math.round(Math.min(top.bottom, H * 0.2)) : 0,
+          bottom: Math.round(Math.max(b ? H - b.top : 0, intro && W < 900 && !cut ? H - intro.top : 0)),
+        };
+        // Never squeeze the visible area below ~40% of the screen.
+        const shrink = (a: number, c: number, total: number) => (a + c > total * 0.6 ? (total * 0.6) / (a + c) : 1);
+        const kx = shrink(p.left, p.right, W), ky = shrink(p.top, p.bottom, H);
+        const next = { left: Math.round(p.left * kx), right: Math.round(p.right * kx), top: Math.round(p.top * ky), bottom: Math.round(p.bottom * ky) };
+        const cur = m.getPadding();
+        if (cur.left === next.left && cur.right === next.right && cur.top === next.top && cur.bottom === next.bottom) return;
+        // Changing padding would cancel one of our camera flights, so wait for it to land.
+        if (flying.has(m)) { m.once("moveend", pad); return; }
+        m.setPadding(next);
+      });
+    };
     pad();
+    m.on("load", pad);
+    const ro = new ResizeObserver(pad);
+    ro.observe(box);
+    // Layout changes around the map (panels, intro card, overlays); the map's own markers and controls don't count.
+    const mo = new MutationObserver((recs) => { if (recs.some((r) => !box.contains(r.target))) pad(); });
+    mo.observe(document.querySelector(".home") ?? document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
     window.addEventListener("resize", pad);
     map.current = m;
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", pad); m.remove(); map.current = null; };
+    return () => { cancelAnimationFrame(raf); cancelAnimationFrame(padRaf); ro.disconnect(); mo.disconnect(); window.removeEventListener("resize", pad); m.remove(); map.current = null; };
   }, []);
 
   // live location
@@ -163,19 +210,47 @@ export default function MapView() {
       spinning.current = false;
       const cam = { center: [fix.lng, fix.lat] as [number, number], zoom: 17, pitch: PITCH_3D, bearing: BEARING_3D };
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) m.jumpTo(cam);
-      else m.flyTo({ ...cam, duration: 4000, curve: 1.7, essential: true });
+      else fly(m, { ...cam, duration: 4000, curve: 1.7, essential: true });
     }
   }, [fix]);
 
-  // Desktop spectators: after the globe intro, fly into the selected launch city (and follow the city bar).
+  // Desktop spectators: after a short globe intro, fly into their nearest launch city.
   useEffect(() => {
     const m = map.current;
-    if (!m || centered.current || window.innerWidth < 900) return;
-    const go = () => { if (centered.current) return; spinning.current = false; flyToCity(m, cityByName(city)); };
-    if (flewToCity.current) { go(); return; }
-    flewToCity.current = true;
-    const t = setTimeout(go, 2600);
+    if (!m || flewToCity.current || centered.current || window.innerWidth < 900) return;
+    const t = setTimeout(() => { if (flewToCity.current || centered.current) return; flewToCity.current = true; spinning.current = false; flyToCity(m, cityByName(city)); }, 2600);
     return () => clearTimeout(t);
+  }, [city]);
+
+  // A picked city (city bar, globe dot, phone chips) always flies there, even for a located player; recenter brings them back.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const m = map.current;
+      if (!m) return;
+      flewToCity.current = true;
+      spinning.current = false;
+      setSel(null);
+      flyToCity(m, cityByName((e as CustomEvent<string>).detail));
+    };
+    window.addEventListener("cq:city", on);
+    return () => window.removeEventListener("cq:city", on);
+  }, []);
+
+  useEffect(() => { chips.current?.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); }, [city]);
+
+  // Light up the selected city on the globe.
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const paint = () => {
+      if (!m.getLayer("cities-dot")) return;
+      const isSel = ["==", ["get", "name"], city] as maplibregl.ExpressionSpecification;
+      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#a066ff", "#ffffff"]);
+      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#a066ff"]);
+      m.setPaintProperty("cities-dot", "circle-radius", ["interpolate", ["linear"], ["zoom"], 0, ["case", isSel, 5.5, 3.5], 6, ["case", isSel, 9, 6]]);
+      m.setPaintProperty("cities-glow", "circle-opacity", ["case", isSel, 0.7, 0.3]);
+    };
+    if (m.isStyleLoaded() && m.getLayer("cities-dot")) paint(); else m.once("idle", paint);
   }, [city]);
 
   // throttled crate fetch (also acts as the location ping)
@@ -266,6 +341,7 @@ export default function MapView() {
             <div className="intro-card">
               <Mark size={44} />
               <h1>Graded cards are dropping in <CitySwap /></h1>
+              <div className="intro-cities" role="list" aria-label="Launch cities" ref={chips}>{SERVICE_CITIES.map((c) => <button key={c.name} role="listitem" className={c.name === city ? "on" : ""} aria-current={c.name === city ? "true" : undefined} onClick={() => pickCity(c.name)}>{c.name}</button>)}</div>
               <p>Walk to a crate on the map, open it on your phone, and a real graded card could be yours.</p>
               <button className="pill primary wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
               <button className="intro-link" onClick={openFilm}>How it works</button>

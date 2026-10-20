@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
-import { setCity, useCity } from "@/lib/cityStore";
+import { pickCity, setCity, useCity } from "@/lib/cityStore";
 import { usd } from "@/lib/format";
 import type { VaultStats } from "@/lib/types";
 import { CitySwap } from "./CitySwap";
@@ -43,7 +43,9 @@ export function HomePanels() {
     void fetch("/api/where").then((r) => r.json()).then((j: { city: string | null }) => { if (j.city) setCity(j.city, false); }).catch(() => undefined);
   }, []);
 
-  const cities = [...SERVICE_CITIES].sort((a, b) => (a.name === city ? -1 : b.name === city ? 1 : 0));
+  const cityBar = useRef<HTMLElement>(null);
+  // Keep the order stable (so a pill never jumps under the cursor) and scroll the selected one into view.
+  useEffect(() => { cityBar.current?.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); }, [city]);
   return (
     <>
       <div className={exploring ? "desk-columns exploring" : "desk-columns"}>
@@ -67,8 +69,8 @@ export function HomePanels() {
 
       <footer className="desk-bottom">
         <div className="desk-bottom-row">
-          <nav className="desk-cities" aria-label="Launch cities">
-            <ol>{cities.map((c) => <li key={c.name}><button className={c.name === city ? "on" : ""} onClick={() => setCity(c.name)}>{c.name}</button></li>)}</ol>
+          <nav className="desk-cities" aria-label="Launch cities" ref={cityBar}>
+            <ol>{SERVICE_CITIES.map((c) => <li key={c.name}><button className={c.name === city ? "on" : ""} aria-current={c.name === city ? "true" : undefined} onClick={() => pickCity(c.name)}>{c.name}</button></li>)}</ol>
           </nav>
           <button className="desk-explore" aria-pressed={exploring} onClick={() => setExploring((x) => !x)}>
             <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d={exploring ? "M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" : "M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>

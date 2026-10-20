@@ -271,6 +271,10 @@ h1 em,h2 em{font-style:normal;color:var(--accent)}
 .intro{position:absolute;z-index:8;left:12px;right:12px;bottom:calc(12px + var(--safe-b));animation:rise .6s var(--ease)}
 .intro-card{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:28px 24px 22px;border-radius:26px;background:var(--graphite);border:1px solid var(--line-soft);box-shadow:var(--shadow)}
 .intro-card h1{font:900 34px/1.02 var(--display);letter-spacing:-1.1px}
+.intro-cities{display:flex;gap:6px;width:calc(100% + 48px);margin:0 -24px;padding:2px 24px;overflow-x:auto;scrollbar-width:none;-webkit-mask:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent);mask:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)}
+.intro-cities::-webkit-scrollbar{display:none}
+.intro-cities button{flex:none;height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--mute);font:700 12.5px var(--ui);cursor:pointer;transition:background .25s var(--ease),color .2s,border-color .2s}
+.intro-cities button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .intro-card>p{margin:-2px 0 4px;color:var(--lede);font-size:14.5px;line-height:1.5}
 .intro-card .pill.primary{height:48px}
 .intro-link{align-self:center;padding:4px 10px;border:0;background:none;color:var(--paper);font:700 14px var(--ui);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;cursor:pointer}

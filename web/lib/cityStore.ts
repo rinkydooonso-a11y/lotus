@@ -13,6 +13,11 @@ export function setCity(name: string, byUser = true) {
   current = name;
   subs.forEach((f) => f());
 }
+/** A visitor picked a city (city bar, globe dot, phone chips): select it and fly the map there, even if it's already selected. */
+export function pickCity(name: string) {
+  setCity(name);
+  window.dispatchEvent(new CustomEvent("cq:city", { detail: name }));
+}
 export function useCity(): string {
   return useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f); }, () => current, () => current);
 }
