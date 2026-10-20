@@ -144,6 +144,7 @@ async function main() {
   // and retried each interval, and never stops the prize sender or inventory sync.
   const squadsOn = Boolean(config.SQUADS_MULTISIG_ADDRESS && config.SQUADS_PROPOSER_SECRET_KEY);
   if (mode === 'top-up' && !squadsOn) throw new Error('top-up needs SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY');
+  if (mode === 'all' && !squadsOn) log.info('top-up proposer disabled: SQUADS_MULTISIG_ADDRESS / SQUADS_PROPOSER_SECRET_KEY not set');
   if ((mode === 'all' || mode === 'top-up') && squadsOn) {
     const multisigAddress = config.SQUADS_MULTISIG_ADDRESS!;
     let deps: Parameters<typeof runTopUpTick>[0] | null = null;
@@ -181,6 +182,7 @@ async function main() {
 
   const feesOn = Boolean(config.PUMP_COIN_MINT && config.FEE_CLAIMER_SECRET_KEY);
   if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY');
+  if (mode === 'all' && !feesOn) log.info('fee claimer disabled: PUMP_COIN_MINT / FEE_CLAIMER_SECRET_KEY not set');
   if ((mode === 'all' || mode === 'fee-claimer') && feesOn) {
     const vault = config.SQUADS_VAULT_ADDRESS!;
     let deps: Parameters<typeof runFeeClaimTick>[0] | null = null;
