@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // strip Phantom's params so a reload or shared link can't replay them
     window.history.replaceState(null, "", window.location.pathname + window.location.hash);
-    if (!pending) { setError("Sign-in expired. Open Lotus in the browser you started in and try again."); return; }
+    if (!pending) { setError("Sign-in expired. Open CardQuest in the browser you started in and try again."); return; }
 
     if (pending.step === "connect") {
       const r = dl.parseConnectReturn(params, pending.dapp.secretKey);

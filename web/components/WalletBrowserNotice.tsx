@@ -14,7 +14,7 @@ export function WalletBrowserNotice() {
   const copy = () => { void navigator.clipboard?.writeText(window.location.origin).then(() => setCopied(true)).catch(() => undefined); };
   return (
     <>
-      <p><strong>Open Lotus in Safari or Chrome to play.</strong></p>
+      <p><strong>Open CardQuest in Safari or Chrome to play.</strong></p>
       <p className="muted">Location doesn&apos;t work inside the wallet&apos;s browser. You can still sign in with Phantom from Safari or Chrome.</p>
       <button className="btn" onClick={copy}>{copied ? "Link copied" : "Copy link"}</button>
     </>
