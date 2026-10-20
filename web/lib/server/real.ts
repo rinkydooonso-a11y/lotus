@@ -56,10 +56,10 @@ export const realServer: GameServer = {
   },
   admin: {
     async inventory() {
-      const { rows } = await srv.getPool().query("SELECT id, nft_mint, card_name, grade, value_usd, tier, status FROM inventory_items ORDER BY acquired_at DESC LIMIT 500");
-      return rows.map((r): AdminInventoryItem => ({ id: r.id, nftMint: r.nft_mint, cardName: r.card_name, grade: r.grade ?? "", valueUsd: Number(r.value_usd), tier: r.tier, status: r.status }));
+      const { rows } = await srv.getPool().query("SELECT id, nft_mint, card_name, grade, value_usd, tier, status, location FROM inventory_items ORDER BY acquired_at DESC LIMIT 500");
+      return rows.map((r): AdminInventoryItem => ({ id: r.id, nftMint: r.nft_mint, cardName: r.card_name, grade: r.grade ?? "", valueUsd: Number(r.value_usd), tier: r.tier, status: r.status, location: r.location }));
     },
-    async addItem(item) { return srv.addInventoryItem({ nftMint: item.nftMint, cardName: item.cardName, grade: item.grade, valueUsd: item.valueUsd, imageUrl: item.imageUrl }); },
+    async addItem(item) { return srv.addInventoryItem({ nftMint: item.nftMint, cardName: item.cardName, grade: item.grade, valueUsd: item.valueUsd, imageUrl: item.imageUrl, location: item.location, costUsd: item.costUsd, purchaseTxSignature: item.purchaseTxSignature }); },
     async setItemStatus(id, status) { await srv.setInventoryStatus(id, status); },
     async odds() {
       const { rows } = await srv.getPool().query<{ tier: string; weight: number }>("SELECT tier, weight FROM odds_config WHERE crate_kind = 'standard'");

@@ -6,25 +6,43 @@ import type { FlaggedPlayer, NewInventoryItem, NewTreasuryEvent } from './types'
 
 export async function addInventoryItem(input: NewInventoryItem, db: Pool = getPool()): Promise<{ id: string }> {
   const i = NewInventoryItemSchema.parse(input);
-  const r = await db.query<{ id: string }>(
-    `INSERT INTO inventory_items (nft_mint, card_name, grade, value_usd, tier, image_url, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [i.nftMint, i.cardName, i.grade ?? null, i.valueUsd, i.tier ?? tierForValue(i.valueUsd), i.imageUrl ?? null, JSON.stringify(i.metadata ?? {})],
-  );
-  return r.rows[0]!;
+  const location = i.location ?? 'hot';
+  return withTx(db, async (c) => {
+    const r = await c.query<{ id: string }>(
+      `INSERT INTO inventory_items (nft_mint, card_name, grade, value_usd, tier, image_url, metadata, location, status, cost_usd)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [
+        i.nftMint, i.cardName, i.grade ?? null, i.valueUsd, i.tier ?? tierForValue(i.valueUsd), i.imageUrl ?? null,
+        JSON.stringify(i.metadata ?? {}), location, location === 'vault' ? 'withheld' : 'available', i.costUsd ?? null,
+      ],
+    );
+    const id = r.rows[0]!.id;
+    if (i.costUsd != null) {
+      await c.query(
+        `INSERT INTO treasury_events (kind, amount, asset, usd_value, tx_signature, note, inventory_item_id)
+         VALUES ('purchase', $1, 'USD', $1, $2, $3, $4)`,
+        [i.costUsd, i.purchaseTxSignature ?? null, `bought ${i.cardName}`, id],
+      );
+    }
+    return { id };
+  });
 }
 
-/** Pull a card from (or return it to) the prize pool. Reserved and sent cards are owed or gone, so they're untouchable. */
+/**
+ * Pull a card from (or return it to) the prize pool. Reserved and sent cards are owed or gone, so they're untouchable.
+ * A vault card can't be made available here: it becomes available only when inventory sync sees it in the hot wallet.
+ */
 export async function setInventoryStatus(
   id: string,
   status: 'available' | 'withheld' | 'removed',
   db: Pool = getPool(),
 ): Promise<void> {
   const r = await db.query(
-    `UPDATE inventory_items SET status = $2 WHERE id = $1 AND status IN ('available', 'withheld', 'removed')`,
+    `UPDATE inventory_items SET status = $2::inventory_status
+      WHERE id = $1 AND status IN ('available', 'withheld', 'removed') AND NOT (location = 'vault' AND $2::inventory_status = 'available')`,
     [id, status],
   );
-  if (r.rowCount !== 1) throw new Error(`inventory item ${id} not found or reserved/sent`);
+  if (r.rowCount !== 1) throw new Error(`inventory item ${id} not found, reserved/sent, or still in the vault`);
 }
 
 /** Freezes the player and withholds their unsent prizes (handoff doc §6). */

@@ -21,6 +21,11 @@ const EnvSchema = z.object({
   LOTUS_ALLOW_MAINNET: z.string().optional(),
   /** Comma-separated collection addresses that count as prize inventory. Empty = every NFT in the hot wallet. */
   PRIZE_COLLECTIONS: z.string().optional().default(''),
+  /**
+   * The Squads vault address (the vault PDA, not the multisig account). Read-only here: inventory
+   * sync lists its cards so vault cards that go missing are reported. No key for it ever lives here.
+   */
+  SQUADS_VAULT_ADDRESS: base58Address.optional(),
   PRIZE_SENDER_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
   PRIZE_SENDER_BATCH: z.coerce.number().int().min(1).max(50).default(10),
   PRIZE_SENDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),

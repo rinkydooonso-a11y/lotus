@@ -60,3 +60,4 @@ Every 2 min: lists the hot wallet via Helius DAS `getAssetsByOwner`, compares wi
 - Not run against devnet yet (no network from the build sandbox). First step once a Helius key and a devnet wallet exist: mint a devnet pNFT and a Core asset to the hot wallet and run one send each.
 - Compressed transfers not built.
 - `PRIZE_COLLECTIONS` needs Collector Crypt's collection addresses.
+- `SQUADS_VAULT_ADDRESS` (optional) is the Squads vault address, read only. With it, inventory sync also checks the cards stored in the vault.

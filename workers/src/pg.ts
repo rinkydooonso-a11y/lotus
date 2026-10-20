@@ -49,10 +49,11 @@ export class PgSyncStore implements SyncStore {
       id: string;
       nft_mint: string;
       status: TrackedItem['status'];
+      location: TrackedItem['location'];
       value_usd: string;
       send_status: string | null;
     }>(
-      `SELECT i.id, i.nft_mint, i.status, i.value_usd, ps.status AS send_status
+      `SELECT i.id, i.nft_mint, i.status, i.location, i.value_usd, ps.status AS send_status
          FROM inventory_items i
          LEFT JOIN prize_sends ps ON ps.inventory_item_id = i.id
         WHERE i.status <> 'removed'`,
@@ -61,6 +62,7 @@ export class PgSyncStore implements SyncStore {
       id: r.id,
       nftMint: r.nft_mint,
       status: r.status,
+      location: r.location,
       valueUsd: Number(r.value_usd),
       sendStatus: r.send_status,
     }));
@@ -102,6 +104,15 @@ export class PgSyncStore implements SyncStore {
 
   async resolveDiscrepancy(id: string): Promise<void> {
     await this.db.query(`UPDATE inventory_discrepancies SET resolved_at = now() WHERE id = $1`, [id]);
+  }
+
+  async moveToHot(id: string): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE inventory_items SET location = 'hot', status = 'available'
+        WHERE id = $1 AND location = 'vault' AND status = 'withheld'`,
+      [id],
+    );
+    return r.rowCount === 1;
   }
 
   async writeSnapshot(s: Snapshot): Promise<void> {

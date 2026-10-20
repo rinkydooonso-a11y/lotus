@@ -4,7 +4,7 @@ import { game } from "@/lib/server";
 import { isRes, requireAdmin } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
-const addBody = z.object({ nftMint: z.string().min(32).max(64), cardName: z.string().min(1).max(200), grade: z.string().max(40).optional(), valueUsd: z.number().positive().max(1_000_000), imageUrl: z.string().url().max(500).optional() });
+const addBody = z.object({ nftMint: z.string().min(32).max(64), cardName: z.string().min(1).max(200), grade: z.string().max(40).optional(), valueUsd: z.number().positive().max(1_000_000), imageUrl: z.string().url().max(500).optional(), location: z.enum(["hot", "vault"]).optional(), costUsd: z.number().min(0).max(1_000_000).optional(), purchaseTxSignature: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{64,90}$/).optional() });
 const statusBody = z.object({ id: z.string().min(1), status: z.enum(["available", "withheld", "removed"]) });
 
 export async function GET() {
@@ -24,6 +24,11 @@ export async function PATCH(req: NextRequest) {
   if (isRes(s)) return s;
   const p = statusBody.safeParse(await req.json().catch(() => null));
   if (!p.success) return NextResponse.json({ error: "invalid_input" }, { status: 400 });
-  await game.admin.setItemStatus(p.data.id, p.data.status);
+  try {
+    await game.admin.setItemStatus(p.data.id, p.data.status);
+  } catch {
+    // Reserved/sent cards, and vault cards being released, are refused by the server.
+    return NextResponse.json({ error: "not_allowed" }, { status: 409 });
+  }
   return NextResponse.json({ ok: true });
 }

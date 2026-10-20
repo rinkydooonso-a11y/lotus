@@ -75,12 +75,15 @@ async function main() {
     const dasUrl = config.HELIUS_DAS_URL ?? config.SOLANA_RPC_URL;
     const allowed = new Set(config.PRIZE_COLLECTIONS);
     const store = new PgSyncStore(db);
+    const prizesOwnedBy = async (owner: string) =>
+      (await dasGetAssetsByOwner(dasUrl, owner))
+        .map((a) => ({ mint: a.id, name: a.content?.metadata?.name ?? null, collection: collectionOf(a) }))
+        .filter((a) => allowed.size === 0 || (a.collection !== null && allowed.has(a.collection)));
+    const vault = config.SQUADS_VAULT_ADDRESS;
     loops.push(loop('inventory-sync', config.INVENTORY_SYNC_INTERVAL_MS, async () => {
       await runInventorySync({
-        listHeld: async () =>
-          (await dasGetAssetsByOwner(dasUrl, chain.hotWallet))
-            .map((a) => ({ mint: a.id, name: a.content?.metadata?.name ?? null, collection: collectionOf(a) }))
-            .filter((a) => allowed.size === 0 || (a.collection !== null && allowed.has(a.collection))),
+        listHeld: () => prizesOwnedBy(chain.hotWallet),
+        listVaultHeld: vault ? () => prizesOwnedBy(vault) : undefined,
         store,
         chain,
         setInventoryStatus: (id, status) => setInventoryStatus(id, status, db),

@@ -11,3 +11,10 @@
 - A ticket spawns a ticket crate at the player's position with better odds (our guess at Collect's mechanic).
 - Empty tier at roll time downgrades to shards, never a lower card tier.
 - Prize sends use a transactional outbox (`prize_sends`), written in the same transaction as the win.
+
+## Treasury (2026-10-20)
+- Design: Squads safe holds funds and most cards; the hot wallet holds about a day of prizes. Bots may only propose Squads transactions or call permissionless pump.fun instructions; signers approve every move out of the safe. Full write-up in the "CardQuest treasury and money flow" doc.
+- `inventory_items.location` (`hot`/`vault`, migration 0003). Vault cards are tracked but never awardable; inventory sync moves them to `hot`/`available` once they land in the hot wallet (confirmed on chain, not just DAS).
+- `SQUADS_VAULT_ADDRESS` (optional, read-only) lets inventory sync report vault cards that neither wallet holds.
+- Card buying stays manual at launch. The admin form records cost and purchase tx, which writes a `purchase` treasury event.
+- Plan prize math at a 1% creator fee until the live pump.fun form confirms more.

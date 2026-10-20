@@ -58,6 +58,9 @@ export const NewInventoryItemSchema = z.object({
   tier: CardTierSchema.optional(),
   imageUrl: z.string().url().nullable().optional(),
   metadata: z.record(z.unknown()).optional(),
+  location: z.enum(['hot', 'vault']).optional(),
+  costUsd: z.number().finite().min(0).max(10_000_000).nullable().optional(),
+  purchaseTxSignature: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{64,90}$/).nullable().optional(),
 });
 
 export const OddsWeightsSchema = z.object({
