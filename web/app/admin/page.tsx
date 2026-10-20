@@ -9,7 +9,8 @@ export default function Admin() {
   const [odds, setOdds] = useState<OddsRow[]>([]);
   const [flagged, setFlagged] = useState<FlaggedPlayer[]>([]);
   const [msg, setMsg] = useState("");
-  const [form, setForm] = useState({ nftMint: "", cardName: "", grade: "", valueUsd: "", imageUrl: "" });
+  const emptyForm = { nftMint: "", cardName: "", grade: "", valueUsd: "", imageUrl: "", costUsd: "", purchaseTxSignature: "", location: "hot" as "hot" | "vault" };
+  const [form, setForm] = useState(emptyForm);
 
   const load = useCallback(async () => {
     const [a, b, c] = await Promise.all(["inventory", "odds", "flagged"].map((p) => fetch(`/api/admin/${p}`, { cache: "no-store" }).then((r) => r.json())));
@@ -32,11 +33,12 @@ export default function Admin() {
   };
 
   const addItem = async () => {
-    const r = await fetch("/api/admin/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nftMint: form.nftMint.trim(), cardName: form.cardName.trim(), grade: form.grade.trim() || undefined, valueUsd: Number(form.valueUsd), imageUrl: form.imageUrl.trim() || undefined }) });
-    setMsg(r.ok ? "Card added." : "Couldn't add card (check fields)."); if (r.ok) { setForm({ nftMint: "", cardName: "", grade: "", valueUsd: "", imageUrl: "" }); await load(); }
+    const r = await fetch("/api/admin/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nftMint: form.nftMint.trim(), cardName: form.cardName.trim(), grade: form.grade.trim() || undefined, valueUsd: Number(form.valueUsd), imageUrl: form.imageUrl.trim() || undefined, location: form.location, costUsd: form.costUsd.trim() ? Number(form.costUsd) : undefined, purchaseTxSignature: form.purchaseTxSignature.trim() || undefined }) });
+    setMsg(r.ok ? "Card added." : "Couldn't add card (check fields)."); if (r.ok) { setForm(emptyForm); await load(); }
   };
   const setStatus = async (id: string, status: "available" | "withheld" | "removed") => {
-    await fetch("/api/admin/inventory", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, status }) });
+    const r = await fetch("/api/admin/inventory", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, status }) });
+    if (!r.ok) setMsg("Not allowed for this card.");
     await load();
   };
 
@@ -60,14 +62,15 @@ export default function Admin() {
       )}
       <h2>Inventory ({inv.length})</h2>
       <div className="card">
-        {(["nftMint", "cardName", "grade", "valueUsd", "imageUrl"] as const).map((k) => (
+        {(["nftMint", "cardName", "grade", "valueUsd", "imageUrl", "costUsd", "purchaseTxSignature"] as const).map((k) => (
           <label key={k} className="orow"><span>{k}</span><input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></label>
         ))}
-        <div className="dline"><button className="btn sm" onClick={() => void addItem()}>Add card (tier set from value)</button></div>
+        <label className="orow"><span>location</span><select value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value as "hot" | "vault" })}><option value="hot">Hot wallet (in play now)</option><option value="vault">Squads vault (held back)</option></select></label>
+        <div className="dline"><button className="btn sm" onClick={() => void addItem()}>Add card (tier set from value)</button><span className="muted small">A cost logs a purchase on the treasury record.</span></div>
       </div>
       <div className="tablewrap card"><table>
-        <thead><tr><th>Card</th><th>Grade</th><th>Tier</th><th>Value</th><th>Status</th><th></th></tr></thead>
-        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td><span className={`tc-${i.tier}`}>{i.tier}</span></td><td>${i.valueUsd}</td><td><span className="tag">{i.status}</span></td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
+        <thead><tr><th>Card</th><th>Grade</th><th>Tier</th><th>Value</th><th>Status</th><th>Where</th><th></th></tr></thead>
+        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td><span className={`tc-${i.tier}`}>{i.tier}</span></td><td>${i.valueUsd}</td><td><span className="tag">{i.status}</span></td><td>{i.location === "vault" ? "vault" : "hot"}</td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && i.location !== "vault" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
       </table></div>
     </div>
   );

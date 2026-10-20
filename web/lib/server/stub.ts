@@ -151,12 +151,12 @@ export const stubServer: GameServer = {
       const valueUsd = item.valueUsd;
       const tier: Tier = valueUsd >= 300 ? "grail" : valueUsd >= 75 ? "rare" : valueUsd >= 30 ? "uncommon" : "common";
       const id = randomUUID();
-      db.inventory.push({ id, nftMint: item.nftMint, cardName: item.cardName, grade: item.grade ?? "", valueUsd, tier, status: "available" });
+      db.inventory.push({ id, nftMint: item.nftMint, cardName: item.cardName, grade: item.grade ?? "", valueUsd, tier, location: item.location ?? "hot", status: item.location === "vault" ? "withheld" : "available" });
       return { id };
     },
     async setItemStatus(id, status) {
       const i = db.inventory.find((x) => x.id === id);
-      if (i && (i.status === "available" || i.status === "withheld" as string)) (i as { status: string }).status = status === "removed" ? "removed" : status;
+      if (i && !(i.location === "vault" && status === "available") && (i.status === "available" || i.status === "withheld" as string)) (i as { status: string }).status = status === "removed" ? "removed" : status;
     },
     async odds() { return db.odds; },
     async setOdds(rows) { db.odds = rows; },

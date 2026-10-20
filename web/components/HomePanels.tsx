@@ -62,7 +62,7 @@ export function HomePanels() {
           <WatchButton className="desk-watch" />
           <QrCard />
           <p className="desk-foot">You have to be next to a crate to open it, so bring your phone.</p>
-          <p className="desk-foot desk-legal">18+ · <Link href="/how#rules">House rules</Link> · <Link href="/how#fair">Fair play</Link> · <Link href="/vault">Odds</Link></p>
+          <p className="desk-foot desk-legal">18+ · <Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/safe-play">Safe play</Link> · <Link href="/vault">Odds</Link></p>
         </section>
         <section className="desk-panel desk-side"><PullsFeed feed={feed} /></section>
       </div>

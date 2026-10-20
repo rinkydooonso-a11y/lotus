@@ -17,7 +17,7 @@ export interface GameServer {
   feed(): Promise<Feed>;
   admin: {
     inventory(): Promise<AdminInventoryItem[]>;
-    addItem(item: { nftMint: string; cardName: string; grade?: string; valueUsd: number; imageUrl?: string }): Promise<{ id: string }>;
+    addItem(item: { nftMint: string; cardName: string; grade?: string; valueUsd: number; imageUrl?: string; location?: "hot" | "vault"; costUsd?: number; purchaseTxSignature?: string }): Promise<{ id: string }>;
     setItemStatus(id: string, status: "available" | "withheld" | "removed"): Promise<void>;
     odds(): Promise<OddsRow[]>;
     setOdds(rows: OddsRow[]): Promise<void>;

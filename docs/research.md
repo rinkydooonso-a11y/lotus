@@ -23,7 +23,7 @@ Researched 2026-10-20 (read-only, web search and public GitHub docs). Handoff do
 **Partly UNCONFIRMED.**
 - Pump.fun's own docs page (`pump.fun/docs/fees`) was unreachable, so I have not seen the current schedule, including the 17 Oct 2026 platform fee mentioned in the handoff.
 - Custom pairs: creator fees are paid **in the pair's quote asset** (so CARDS for us), and 50% of Custom Pairs revenue goes to the PUMP buyback-and-burn contract ([The Defiant](https://thedefiant.io/news/defi/pump-fun-lets-creators-launch-coins-priced-in-tokenized-stocks), [Incrypted](https://incrypted.com/en/pump-fun-expanded-its-platform-with-tokenized-stocks-featuring-custom-pairs-function/)).
-- **Conflict on the creator fee range:** news reports say custom-pair creator fee is flat 0.05%-1% (or cashback), field accepting 0.01-1 ([Cryptowisser](https://www.cryptowisser.com/news/pumpfun-lets-creators-pair-new-tokens-with-tokenized-stocks/?lang=en), [cryptonews.net](https://cryptonews.net/news/market/33421807/)). The handoff says the live form showed 0.01-3%. **Trust the live form at launch time, and check whether 3% really applies to a CARDS pair**, since the prize-math table depends on it.
+- **Superseded (2026-10-20):** pump.fun's docs give the creator fee as 0.30% before graduation and 0.95% after PumpSwap, stepping down; do not plan around the ranges below. **Original note, kept for history:** **Conflict on the creator fee range:** news reports say custom-pair creator fee is flat 0.05%-1% (or cashback), field accepting 0.01-1 ([Cryptowisser](https://www.cryptowisser.com/news/pumpfun-lets-creators-pair-new-tokens-with-tokenized-stocks/?lang=en), [cryptonews.net](https://cryptonews.net/news/market/33421807/)). The handoff says the live form showed 0.01-3%. **Trust the live form at launch time, and check whether 3% really applies to a CARDS pair**, since the prize-math table depends on it.
 - Can fee/pair change after launch? **UNCONFIRMED.** Nothing I read says a creator can change the pair; the handoff's "assume locked" is the right assumption. Separately, protocol-level rates live in pump's global config (`GlobalConfig` / `Global`), which pump.fun controls and has changed repeatedly ([PumpSwap creator fee doc](https://github.com/pump-fun/pump-public-docs/blob/main/docs/PUMP_SWAP_CREATOR_FEE_README.md), [Pump creator fee doc](https://github.com/pump-fun/pump-public-docs/blob/main/docs/PUMP_CREATOR_FEE_README.md); both older docs). Expect the platform, not you, to be able to change rules.
 - Shares can be changed once after a CTO (Incrypted, secondhand).
 
@@ -62,7 +62,7 @@ Never paste seed phrases anywhere. Do mainnet steps from a signer you control; e
 
 ## Open items to resolve before launch
 - Read pump.fun/docs/fees on the live site: platform fee from 17 Oct 2026, custom-pair fee range, any fee-change rules.
-- Confirm in the live create form that 3% is allowed for a CARDS pair.
+- (Superseded: use pump.fun's documented 0.30% / 0.95% schedule rather than a 3% pair fee.) Do not enable Holder Rewards.
 - Ask Collector Crypt for API docs; until then buy by hand.
 - Test a Squads vault as fee recipient with a small amount, and pre-create the vault's CARDS ATA.
-- Remember `update_fee_shares_v2` is effectively one-shot.
+- Remember `update_fee_shares_v2` is effectively one-shot: fee sharing at 100% to the vault is permanent.

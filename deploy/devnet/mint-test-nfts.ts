@@ -111,7 +111,7 @@ for (let i = 1; i <= COUNT; i++) {
 }
 
 console.log('\n--- Next steps ---');
-console.log('1. Put the wallet secret in the workers HOT_WALLET_SECRET_KEY (Railway variables).');
+console.log('1. Put the wallet secret in the workers HOT_WALLET_SECRET_KEY (Fly secrets).');
 console.log('   If you used the generated wallet, the key is in .devnet-hot-wallet.json (JSON array form works as-is).');
 console.log('2. Wait ~2 minutes: inventory sync should list these as "untracked" in /admin.');
 console.log('3. Add them to the prize pool (admin page, or run this SQL in the Supabase SQL editor):\n');

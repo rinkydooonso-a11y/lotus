@@ -40,7 +40,7 @@ Everything is public: the vault and the live odds.
 GAME_URL_PLACEHOLDER/vault
 
 **7/**
-Where prizes come from: trading fees on the CardQuest coin buy the cards. More trading, more cards. Less trading, a thinner vault. Not financial advice, no promises.
+Where prizes come from: creator fees from trading the CardQuest coin on pump.fun go to the vault and buy the cards. More trading, more cards. Less trading, a thinner vault. Not financial advice, no promises.
 
 CA: COIN_ADDRESS_PLACEHOLDER
 
@@ -78,3 +78,9 @@ Walk. Find crates. Win real graded cards.
 ## Not allowed in copy
 
 Returns, price targets, "safe", "can't lose", or implying Collector Crypt partnership or endorsement.
+
+## Fee facts (check before posting anything about fees)
+
+- pump.fun's creator fee is 0.30% before the coin graduates, and starts at 0.95% after it moves to PumpSwap, stepping down. pump.fun sets these and can change them; never quote a fixed number as a promise.
+- Launch does not use "Holder Rewards".
+- Fee sharing is set to 100% to the vault. It is a one-time, permanent setting, so do not say it can be changed later.

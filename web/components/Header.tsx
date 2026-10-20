@@ -68,6 +68,7 @@ export function Header() {
             <button className="menu-item" onClick={openFilm}>Watch the film</button>
             {NAV.map((t) => <Link key={t.href} href={t.href} className="menu-item">{t.label}</Link>)}
             <a className="menu-item muted" href={LINKS.collectorCrypt} rel="noopener noreferrer">Redeem or sell on Collector Crypt</a>
+            <div className="menu-legal"><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link><Link href="/safe-play">Safe play</Link></div>
             <div className="menu-foot"><CaChip full /><XButton /></div>
             <Link href="/" className="pill wide">Back to the map</Link>
           </nav>

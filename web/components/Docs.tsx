@@ -50,6 +50,7 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="sf-row"><CaChip /><a href={LINKS.x} target="_blank" rel="noopener noreferrer">{LINKS.xHandle}</a></div>
       <nav className="sf-links"><Link href="/">Play</Link><Link href="/how">How it works</Link><Link href="/stats">Live stats</Link><Link href="/coin">Where the money goes</Link><Link href="/vault">The vault</Link><a href={LINKS.collectorCrypt} rel="noopener noreferrer">Collector Crypt</a></nav>
+      <nav className="sf-links sf-legal"><Link href="/terms">Terms of Play</Link><Link href="/privacy">Privacy</Link><Link href="/safe-play">Safe play</Link></nav>
       <p className="sf-fine">CardQuest is an independent game and is not affiliated with Collector Crypt. Prizes depend on available inventory. Nothing here is financial advice or a promise of returns. Play where it is safe and legal, and watch your surroundings. 18+.</p>
     </footer>
   );

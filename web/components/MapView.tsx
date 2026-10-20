@@ -75,7 +75,7 @@ function flyToCity(m: maplibregl.Map, c: { lat: number; lng: number }) {
 }
 /** Isometric crate marker; colours come from CSS (purple, or gold for ticket crates). */
 const CRATE_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="lid" d="M24 4 43 14.5 24 25 5 14.5z"/><path class="l" d="M5 14.5 24 25v19L5 33.5z"/><path class="r" d="M43 14.5 24 25v19l19-10.5z"/><path class="band" d="M14 9.3 33 19.8v4.4L14 13.7z"/><path class="band" d="M22.6 24.2 24 25l1.4-.8v19l-1.4.8-1.4-.8z"/></svg>`;
-const PING_EVERY_MS = 5000;
+const PING_EVERY_MS = 15000;
 
 interface Fix { lat: number; lng: number; acc: number }
 

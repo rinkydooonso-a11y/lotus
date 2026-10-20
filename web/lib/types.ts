@@ -1,4 +1,4 @@
-export type RejectCode = "not_found" | "not_yours" | "expired" | "already_opened" | "too_far" | "frozen" | "anticheat" | "invalid_input";
+export type RejectCode = "not_found" | "not_yours" | "expired" | "already_opened" | "too_far" | "frozen" | "anticheat" | "invalid_input" | "unavailable";
 export type Tier = "common" | "uncommon" | "rare" | "grail";
 
 export interface Crate {
@@ -53,6 +53,8 @@ export interface AdminInventoryItem {
   valueUsd: number;
   tier: Tier;
   status: "available" | "reserved" | "sent" | "withheld" | "removed";
+  /** "vault" = in the Squads vault, not awardable until a top-up lands it in the hot wallet. Missing = hot. */
+  location?: "hot" | "vault";
 }
 
 export interface OddsRow { tier: Tier | "shards"; weight: number }
