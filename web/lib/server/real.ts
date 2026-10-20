@@ -2,7 +2,7 @@ import "server-only";
 import * as srv from "@lotus/server";
 import { validateOpen } from "@lotus/anticheat";
 import type { PrizeItemView } from "@lotus/server";
-import type { AdminInventoryItem, Crate, OpenResult, Tier } from "../types";
+import type { AdminInventoryItem, Crate, FeedPull, OpenResult, Tier } from "../types";
 import type { GameServer } from "./types";
 
 /** Adapter over `@lotus/server` (see /lotus/docs/contracts.md). */
@@ -10,6 +10,16 @@ const crateView = (c: srv.CrateView): Crate => ({ id: c.id, lat: c.lat, lng: c.l
 const cardResult = (item: PrizeItemView, status: string): Extract<OpenResult, { kind: "card" }> => ({
   kind: "card", tier: item.tier, cardName: item.cardName, grade: item.grade ?? "Graded", valueUsd: item.valueUsd, imageUrl: item.imageUrl ?? undefined, nftMint: item.nftMint,
   status: status === "sent" ? "sent" : status === "failed" ? "failed" : "pending",
+});
+
+const maskWallet = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+interface PullRow { id: string; created_at: Date; wallet_address: string; card_name: string; grade: string | null; value_usd: string; tier: Tier; image_url: string | null; kind: Crate["kind"] }
+const PULLS_SQL = `SELECT o.id, o.created_at, o.wallet_address, i.card_name, i.grade, i.value_usd, i.tier, i.image_url, c.kind
+  FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id JOIN crates c ON c.id = o.crate_id
+  WHERE o.result = 'card' AND o.status <> 'withheld'`;
+const pullView = (r: PullRow): FeedPull => ({
+  id: r.id, at: r.created_at.toISOString(), cardName: r.card_name, grade: r.grade ?? "Graded", valueUsd: Number(r.value_usd), tier: r.tier,
+  imageUrl: r.image_url ?? undefined, collector: maskWallet(r.wallet_address), crateKind: r.kind,
 });
 
 export const realServer: GameServer = {
@@ -52,6 +62,25 @@ export const realServer: GameServer = {
     return {
       cardsInVault: v.totalAvailable, cardsSent: v.totalSent, totalValueUsd: v.totalAvailableValueUsd, byTier,
       recentTreasury: treasury.rows.map((r) => ({ at: r.created_at.toISOString(), kind: r.kind, note: r.note ?? "", txSignature: r.tx_signature ?? undefined })),
+    };
+  },
+  async feed() {
+    const db = srv.getPool();
+    const [recent, biggest, collectors, totals] = await Promise.all([
+      db.query<PullRow>(`${PULLS_SQL} ORDER BY o.created_at DESC LIMIT 20`),
+      db.query<PullRow>(`${PULLS_SQL} AND o.created_at > now() - interval '30 days' ORDER BY i.value_usd DESC LIMIT 20`),
+      db.query<{ wallet_address: string; cards: number; total: string }>(`SELECT o.wallet_address, count(*)::int AS cards, sum(i.value_usd) AS total
+        FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id
+        WHERE o.result = 'card' AND o.status <> 'withheld' GROUP BY o.wallet_address ORDER BY total DESC LIMIT 20`),
+      db.query<{ collectors: number; pulled: number; won: string | null }>(`SELECT (SELECT count(*)::int FROM players) AS collectors, count(*)::int AS pulled, sum(i.value_usd) AS won
+        FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id WHERE o.result = 'card' AND o.status <> 'withheld'`),
+    ]);
+    const t = totals.rows[0];
+    return {
+      totals: { collectors: t?.collectors ?? 0, cardsPulled: t?.pulled ?? 0, wonUsd: Number(t?.won ?? 0) },
+      recent: recent.rows.map(pullView),
+      biggest: biggest.rows.map(pullView),
+      collectors: collectors.rows.map((r) => ({ collector: maskWallet(r.wallet_address), cards: r.cards, totalUsd: Number(r.total) })),
     };
   },
   admin: {

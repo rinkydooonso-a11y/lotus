@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { SiteFooter } from "@/components/Docs";
 
 export const metadata: Metadata = { title: "Privacy · CardQuest", description: "What CardQuest collects and why." };
 
 // Plain-language draft. Have a lawyer review before mainnet launch. Retention matches PING_RETENTION_DAYS (default 30).
 export default function Privacy() {
   return (
-    <div className="page">
+    <div className="docs">
       <h1>Privacy</h1>
       <p className="muted small">Last updated: October 2026</p>
       <p>We collect what we need to run a location game and stop cheating, and no more. We do not sell your data and we do not ask for your name or email.</p>
@@ -34,6 +35,7 @@ export default function Privacy() {
 
       <h2>Children</h2>
       <p>CardQuest is not for anyone under 18.</p>
+      <SiteFooter />
     </div>
   );
 }

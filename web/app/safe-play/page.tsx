@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { SiteFooter } from "@/components/Docs";
 
 export const metadata: Metadata = { title: "Safe play · CardQuest", description: "How to play CardQuest safely." };
 
 export default function SafePlay() {
   return (
-    <div className="page">
+    <div className="docs">
       <h1>Safe play</h1>
       <p>CardQuest sends you outside. A crate is never worth a risk. Please read this before you play.</p>
 
@@ -41,6 +42,7 @@ export default function SafePlay() {
 
       <h2>Weather and health</h2>
       <p>Skip play in storms, extreme heat or cold, and take breaks and water on long walks.</p>
+      <SiteFooter />
     </div>
   );
 }

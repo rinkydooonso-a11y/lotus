@@ -1,6 +1,6 @@
 # CardQuest launch kit
 
-Fill in before posting: the coin ticker (`$CQ` if confirmed), `COIN_ADDRESS_PLACEHOLDER`, `GAME_URL_PLACEHOLDER`. The X account is @cardquestsol (https://x.com/cardquestsol).
+Fill in before posting: `TICKER_PLACEHOLDER` (the coin ticker), `COIN_ADDRESS_PLACEHOLDER`, `GAME_URL_PLACEHOLDER`. X account: [@cardquestsol](https://x.com/cardquestsol).
 
 Rules for every post: no promises about returns or price, no "guaranteed", no "100x", no "moon". Say what the game does. Always say prizes depend on the vault, which is funded by trading fees.
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SiteFooter } from "@/components/Docs";
 import Link from "next/link";
 
 export const metadata: Metadata = { title: "Terms of Play · CardQuest", description: "The rules for playing CardQuest." };
@@ -6,7 +7,7 @@ export const metadata: Metadata = { title: "Terms of Play · CardQuest", descrip
 // Plain-language draft. Have a lawyer review before mainnet launch; eligibility and prize rules vary by country.
 export default function Terms() {
   return (
-    <div className="page">
+    <div className="docs">
       <h1>Terms of Play</h1>
       <p className="muted small">Last updated: October 2026</p>
       <p>CardQuest is a free map game. You walk to crates, open them, and can win shards, tickets or a real graded trading card sent to your Solana wallet. By connecting a wallet you agree to these terms.</p>
@@ -42,6 +43,7 @@ export default function Terms() {
 
       <h2>Contact</h2>
       <p>Find us on X at <a href="https://x.com/cardquestsol">@cardquestsol</a>.</p>
+      <SiteFooter />
     </div>
   );
 }

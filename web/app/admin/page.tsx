@@ -18,8 +18,8 @@ export default function Admin() {
   }, []);
   useEffect(() => { if (user?.isAdmin) void load(); }, [user, load]);
 
-  if (loading) return <div className="page" />;
-  if (!user?.isAdmin) return <div className="page"><h1>Admin</h1><p className="muted">Not authorised.</p></div>;
+  if (loading) return <div className="docs" />;
+  if (!user?.isAdmin) return <div className="docs"><h1>Admin</h1><p className="muted">Not authorised.</p></div>;
 
   const total = odds.reduce((s, r) => s + r.weight, 0);
   const saveOdds = async () => {
@@ -43,8 +43,8 @@ export default function Admin() {
   };
 
   return (
-    <div className="page wide">
-      <h1>Admin</h1>
+    <div className="docs wide">
+      <h1>Admin <em>console.</em></h1>
       <h2>Odds (parts per 1,000,000)</h2>
       <div className="card">
         {odds.map((r, i) => (
@@ -68,9 +68,9 @@ export default function Admin() {
         <label className="orow"><span>location</span><select value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value as "hot" | "vault" })}><option value="hot">Hot wallet (in play now)</option><option value="vault">Squads vault (held back)</option></select></label>
         <div className="dline"><button className="btn sm" onClick={() => void addItem()}>Add card (tier set from value)</button><span className="muted small">A cost logs a purchase on the treasury record.</span></div>
       </div>
-      <div className="tablewrap"><table>
+      <div className="tablewrap card"><table>
         <thead><tr><th>Card</th><th>Grade</th><th>Tier</th><th>Value</th><th>Status</th><th>Where</th><th></th></tr></thead>
-        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td>{i.tier}</td><td>${i.valueUsd}</td><td>{i.status}</td><td>{i.location === "vault" ? "vault" : "hot"}</td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && i.location !== "vault" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
+        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td><span className={`tc-${i.tier}`}>{i.tier}</span></td><td>${i.valueUsd}</td><td><span className="tag">{i.status}</span></td><td>{i.location === "vault" ? "vault" : "hot"}</td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && i.location !== "vault" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
       </table></div>
     </div>
   );

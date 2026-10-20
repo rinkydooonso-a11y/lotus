@@ -46,4 +46,4 @@ export async function checkNonce(token: string | undefined, nonce: string): Prom
   try { const { payload } = await jwtVerify(token, key()); return payload.nonce === nonce; } catch { return false; }
 }
 
-export const loginMessage = (nonce: string) => `Sign in to Lotus\nNonce: ${nonce}`;
+export const loginMessage = (nonce: string) => `Sign in to CardQuest\nNonce: ${nonce}`;
