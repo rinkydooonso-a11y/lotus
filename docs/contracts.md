@@ -28,13 +28,15 @@ Env: `DATABASE_URL` (Postgres connection string). `getPool()` reads it lazily.
 | `wallets` | id, player_id, address (unique), type `external\|embedded`, is_primary, created_at |
 | `crates` | id, location geography(Point,4326), spawned_for_player_id, kind `standard\|ticket`, tier_hint, status `active\|opened\|expired`, spawned_at, expires_at, opened_at |
 | `location_pings` | id bigserial, player_id, location geography, accuracy_m, recorded_at (server time), client_ts, device_id, ip |
-| `inventory_items` | id, nft_mint (unique), card_name, grade, value_usd numeric, tier `common\|uncommon\|rare\|grail`, status `available\|reserved\|sent\|withheld\|removed`, reserved_by_opening_id, reserved_at, sent_at, acquired_at, image_url, metadata jsonb |
+| `inventory_items` | id, nft_mint (unique), card_name, grade, value_usd numeric, tier `common\|uncommon\|rare\|grail`, status `available\|reserved\|sent\|withheld\|removed`, reserved_by_opening_id, reserved_at, sent_at, acquired_at, image_url, metadata jsonb, location `hot\|vault`, cost_usd |
 | `crate_openings` | id, crate_id (unique), player_id, wallet_address, rolled_tier, result `card\|shards`, downgraded bool, shards_awarded, tickets_awarded, inventory_item_id (unique), status `complete\|pending\|sent\|failed\|withheld`, tx_signature, client_lat/lng/accuracy, device_id, ip, created_at |
 | `prize_sends` | id, opening_id (unique), inventory_item_id (unique), nft_mint, recipient_address, status `queued\|processing\|submitted\|sent\|failed\|withheld`, attempts, tx_signature, last_error, locked_until, created_at, updated_at, sent_at |
 | `odds_config` | crate_kind, tier (`common..grail` or `shards`), weight int (parts per 1,000,000) |
 | `ticket_spends` | id, player_id, crate_id, created_at |
-| `treasury_events` | id, kind `claim\|purchase\|topup\|other`, amount numeric, asset, usd_value, tx_signature, note, created_at |
+| `treasury_events` | id, kind `claim\|purchase\|topup\|other`, amount numeric, asset, usd_value, tx_signature, note, inventory_item_id, created_at |
 | `player_flags` | id, player_id, source, reason, details jsonb, created_at, resolved_at (anti-cheat writes here) |
+
+A `vault` card is always `withheld` or `removed` (CHECK `inventory_vault_not_in_play`), so it can never be reserved. Only inventory sync makes it `hot` + `available`, after confirming on chain that it reached the hot wallet. `addInventoryItem` with a `costUsd` also writes a `purchase` treasury event in the same transaction.
 
 Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–300, grail 300+. `tierForValue(usd)` implements this.
 

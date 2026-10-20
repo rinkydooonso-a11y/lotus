@@ -18,6 +18,12 @@ class MemStore implements SyncStore {
   }
   async resolveDiscrepancy(id: string) { this.discrepancies.find((d) => d.id === id)!.resolved = true; }
   async writeSnapshot(s: Snapshot) { this.snapshots.push(s); }
+  async moveToHot(id: string) {
+    const i = this.items.find((x) => x.id === id)!;
+    if (i.location !== 'vault' || i.status !== 'withheld') return false;
+    i.location = 'hot'; i.status = 'available';
+    return true;
+  }
   open(kind?: DiscrepancyKind) { return this.discrepancies.filter((d) => !d.resolved && (!kind || d.kind === kind)); }
 }
 
@@ -43,8 +49,10 @@ function setup() {
     for (const m of mints) chain.owners.set(m, HOT);
   };
   const item = (id: string, nftMint: string, status: TrackedItem['status'], sendStatus: string | null = null) =>
-    store.items.push({ id, nftMint, status, valueUsd: 25, sendStatus });
-  return { store, chain, deps, hold, item, statusCalls };
+    store.items.push({ id, nftMint, status, location: 'hot', valueUsd: 25, sendStatus });
+  const vaultItem = (id: string, nftMint: string) =>
+    store.items.push({ id, nftMint, status: 'withheld', location: 'vault', valueUsd: 25, sendStatus: null });
+  return { store, chain, deps, hold, item, vaultItem, statusCalls };
 }
 
 describe('inventory sync', () => {
@@ -101,5 +109,50 @@ describe('inventory sync', () => {
     expect(s.store.open('untracked').map((d) => d.nftMint)).toEqual(['NEW']);
     expect(r.heldCount).toBe(2);
     expect(r.trackedCount).toBe(1);
+  });
+
+  describe('vault cards', () => {
+    it('stay withheld in the vault without raising discrepancies', async () => {
+      const s = setup();
+      s.vaultItem('v1', 'V');
+      s.hold();
+      const r = await runInventorySync(s.deps);
+      expect(s.store.items[0]).toMatchObject({ status: 'withheld', location: 'vault' });
+      expect(s.store.open()).toHaveLength(0);
+      expect(r.availableCount).toBe(0);
+    });
+
+    it('become available once a top-up lands them in the hot wallet', async () => {
+      const s = setup();
+      s.vaultItem('v1', 'V');
+      s.hold('V');
+      const r = await runInventorySync(s.deps);
+      expect(r.arrivedFromVault).toBe(1);
+      expect(r.availableCount).toBe(1);
+      expect(s.store.items[0]).toMatchObject({ status: 'available', location: 'hot' });
+      expect(s.statusCalls).toEqual([]);
+    });
+
+    it('do not move when only the indexer says they arrived', async () => {
+      const s = setup();
+      s.vaultItem('v1', 'V');
+      s.hold('V');
+      s.chain.owners.set('V', OTHER);
+      const r = await runInventorySync(s.deps);
+      expect(r.arrivedFromVault).toBe(0);
+      expect(s.store.items[0]).toMatchObject({ status: 'withheld', location: 'vault' });
+    });
+
+    it('are reported missing when neither wallet holds them, and untracked vault cards are reported', async () => {
+      const s = setup();
+      s.vaultItem('v1', 'V');
+      s.vaultItem('v2', 'W');
+      s.hold();
+      const deps = { ...s.deps, listVaultHeld: async () => [{ mint: 'W', name: 'W', collection: null }, { mint: 'X', name: 'X', collection: null }] };
+      await runInventorySync(deps);
+      expect(s.store.open('missing').map((d) => d.nftMint)).toEqual(['V']);
+      expect(s.store.open('untracked').map((d) => d.nftMint)).toEqual(['X']);
+      expect(s.store.items.every((i) => i.status === 'withheld')).toBe(true);
+    });
   });
 });

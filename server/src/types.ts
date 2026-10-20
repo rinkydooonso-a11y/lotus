@@ -8,6 +8,7 @@ export const ROLL_TIERS: readonly RollTier[] = ['grail', 'rare', 'uncommon', 'co
 export type CrateKind = 'standard' | 'ticket';
 export type WalletType = 'external' | 'embedded';
 export type InventoryStatus = 'available' | 'reserved' | 'sent' | 'withheld' | 'removed';
+export type InventoryLocation = 'hot' | 'vault';
 export type OpeningStatus = 'complete' | 'pending' | 'sent' | 'failed' | 'withheld';
 export type PrizeSendStatus = 'queued' | 'processing' | 'submitted' | 'sent' | 'failed' | 'withheld';
 
@@ -152,6 +153,11 @@ export interface NewInventoryItem {
   tier?: CardTier;
   imageUrl?: string | null;
   metadata?: Record<string, unknown>;
+  /** 'vault' = held in the Squads vault, tracked but not awardable until a top-up lands it in the hot wallet. Default 'hot'. */
+  location?: InventoryLocation;
+  /** What we paid. When given, a 'purchase' treasury event is written with the item. */
+  costUsd?: number | null;
+  purchaseTxSignature?: string | null;
 }
 
 export interface NewTreasuryEvent {

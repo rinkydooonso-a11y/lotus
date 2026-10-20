@@ -50,6 +50,22 @@ Every 2 min: lists the hot wallet via Helius DAS `getAssetsByOwner`, compares wi
 - Everything else goes to `inventory_discrepancies` for the admin page: `untracked` (in wallet, not in DB: add it with `addInventoryItem`), `missing` (reserved/withheld but gone), `sent_but_held`.
 - Writes `vault_snapshots` (on-chain verified count and value) for the public "cards in vault" counter.
 
+## Top-up proposer (`top-up`)
+
+Keeps the hot wallet stocked from the Squads vault without being able to move anything itself. Every `TOPUP_INTERVAL_MS` it compares available cards per tier with `TOPUP_TARGETS`, picks vault cards (oldest first, under `TOPUP_MAX_CARDS` / `TOPUP_MAX_USD`), adds SOL if the hot wallet is under `TOPUP_MIN_HOT_SOL`, and drafts one Squads batch proposal. Signers approve and execute it in the Squads app; inventory sync makes the cards available once they land.
+
+- The proposer key must have the Initiate permission only, the multisig must have no config authority (autonomous), and its threshold must be at least `SQUADS_MIN_THRESHOLD` (2). This is checked at start and before every proposal; if it fails the job logs an error and retries each interval, while the prize sender keeps running.
+- Cards are checked on chain before drafting. A card the vault no longer holds is left out and logged, instead of blocking the top-up.
+- An approved proposal that later goes stale is still treated as live, because Squads can still execute it.
+- One open proposal at a time (`topup_proposals`, unique index). Rows are written before any chain call. A failure before anything reached the chain marks the row `abandoned` at once, so the next tick retries; a proposal that never went live is abandoned after 10 minutes. Abandoned rows don't hold their transaction index.
+- A proposal is only trusted if its batch was created by our key, so an index someone else used in the Squads app is never adopted.
+- Executed top-ups write one `topup` treasury event per card, plus one for SOL.
+- `scripts/devnet-topup-e2e.ts` runs the whole flow against a throwaway devnet multisig.
+
+## Fee claimer (`fee-claimer`)
+
+Uses pump.fun's official SDK (`@pump-fun/pump-sdk`, pinned) to call the permissionless sweep, consolidate and `distribute_creator_fees(_v2)` instructions for `PUMP_COIN_MINT`. Fees go from pump's vault straight to the fee-sharing shareholders; the bot's key only pays gas. It refuses to send unless `SQUADS_VAULT_ADDRESS` is a shareholder with at least `FEE_MIN_VAULT_SHARE_BPS`, simulates first and skips anything under `FEE_CLAIM_MIN_BASE_UNITS`, and logs the vault's change read from the landed transaction as a `claim` treasury event. A confirm timeout is checked against the signature status before giving up. Launch checklist: make the fee-sharing config's admin the vault itself, or revoke it, so no single key can redirect fees.
+
 ## Safety
 
 - Hot wallet key only from `HOT_WALLET_SECRET_KEY` (host secret store). Never logged; config errors name the variable, never the value.
@@ -60,3 +76,4 @@ Every 2 min: lists the hot wallet via Helius DAS `getAssetsByOwner`, compares wi
 - Not run against devnet yet (no network from the build sandbox). First step once a Helius key and a devnet wallet exist: mint a devnet pNFT and a Core asset to the hot wallet and run one send each.
 - Compressed transfers not built.
 - `PRIZE_COLLECTIONS` needs Collector Crypt's collection addresses.
+- `SQUADS_VAULT_ADDRESS` (optional) is the Squads vault address, read only. With it, inventory sync also checks the cards stored in the vault.
