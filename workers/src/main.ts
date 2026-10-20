@@ -65,10 +65,36 @@ async function main() {
   const controller = new AbortController();
   const loops: Promise<void>[] = [];
   let releaseLock: (() => Promise<void>) | null = null;
+  let lockLost = false;
+  // Registered before taking the lock: a deploy can SIGTERM us while we are still waiting for it.
+  const shutdown = () => {
+    log.info('shutting down after current ticks finish');
+    controller.abort();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 
   if (mode === 'all' || mode === 'prize-sender') {
-    releaseLock = await acquireSingletonLock(db, 'lotus:prize-sender');
-    if (!releaseLock) throw new Error('another prize sender is already running');
+    const connectLock = async () => {
+      const c = new pg.Client({ connectionString: config.DATABASE_URL, ssl: pgSsl(config.DATABASE_URL), connectionTimeoutMillis: 10_000, keepAlive: true });
+      await c.connect();
+      return c;
+    };
+    releaseLock = await acquireSingletonLock(connectLock, 'lotus:prize-sender', {
+      log,
+      signal: controller.signal,
+      onLost: (reason) => {
+        // Another machine could take the lock now, so stop everything and let the restart re-acquire it.
+        lockLost = true;
+        log.error('lost the prize-sender lock; stopping', { reason });
+        controller.abort();
+      },
+    });
+    if (!releaseLock) {
+      log.info('stopped before the prize-sender lock was taken');
+      await db.end();
+      return;
+    }
     const queue: PrizeQueue = {
       claimNextPrizeSend: (opts) => claimNextPrizeSend(opts, db),
       recordSubmittedSignature: (id, sig) => recordSubmittedSignature(id, sig, db),
@@ -184,16 +210,10 @@ async function main() {
     }, controller.signal));
   }
 
-  const shutdown = () => {
-    log.info('shutting down after current ticks finish');
-    controller.abort();
-  };
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
-
   await Promise.all(loops);
   if (releaseLock) await releaseLock();
   await db.end();
+  if (lockLost) process.exitCode = 1;
 }
 
 main().catch((err) => {
