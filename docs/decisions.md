@@ -17,7 +17,8 @@
 - `inventory_items.location` (`hot`/`vault`, migration 0003). Vault cards are tracked but never awardable; inventory sync moves them to `hot`/`available` once they land in the hot wallet (confirmed on chain, not just DAS).
 - `SQUADS_VAULT_ADDRESS` (optional, read-only) lets inventory sync report vault cards that neither wallet holds.
 - Card buying stays manual at launch. The admin form records cost and purchase tx, which writes a `purchase` treasury event.
-- Plan prize math at a 1% creator fee until the live pump.fun form confirms more.
+- Plan prize math at pump.fun's documented creator fee: 0.30% before graduation, and 0.95% once the coin is on PumpSwap, stepping down as market cap grows. Re-check the live pump.fun fee page before launch, since pump.fun sets these.
+- Do not enable "Holder Rewards" at launch. Fee sharing is set to 100% to the Squads vault, and that setting is one-time and permanent.
 - Top-ups are one Squads batch proposal per top-up (one approval moves many cards). Drafted by an Initiate-only key; the worker refuses a key that can vote or execute.
 - Fee claiming uses pump.fun's official SDK and only the permissionless distribution path, so it needs a fee-sharing config with the vault as a shareholder.
 - Treasury events are written by the code that causes them (purchase form, top-up execution, fee claim) rather than by a chain watcher.
