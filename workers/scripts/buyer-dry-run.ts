@@ -56,7 +56,7 @@ async function main() {
   for (const [c, n] of collections) {
     if (c === 'none') continue;
     const r = await das('getAssetsByGroup', { groupKey: 'collection', groupValue: c, page: 1, limit: 1000 });
-    console.log(`collection ${c}: seen on ${n} sampled listings; getAssetsByGroup page 1 has ${r.items?.length ?? 0} items (total ${r.total ?? '?'})`);
+    console.log(`collection ${c}: seen on ${n} sampled listings; getAssetsByGroup page 1 has ${r.items?.length ?? 0} items (DAS page count, not the collection size)`);
   }
 
   const cheapest = listings.find((l) => /card/i.test(l.attributes.Type ?? l.attributes.Category ?? '')) ?? listings[0];
