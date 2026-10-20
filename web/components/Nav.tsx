@@ -8,14 +8,10 @@ export const TABS = [
   { href: "/vault", label: "Vault", icon: "▣" },
 ];
 
-/** Inline tabs for the desktop header. */
+/** Inline links for the desktop header. */
 export function NavLinks() {
   const path = usePathname();
-  return (
-    <nav className="navlinks">
-      {TABS.map((t) => <Link key={t.href} href={t.href} className={path === t.href ? "on" : ""}>{t.label}</Link>)}
-    </nav>
-  );
+  return <>{TABS.map((t) => <Link key={t.href} href={t.href} className={path === t.href ? "on" : ""}>{t.label}</Link>)}</>;
 }
 
 /** Bottom tab bar on phones. */

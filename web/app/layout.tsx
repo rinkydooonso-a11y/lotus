@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { Header } from "@/components/Header";
 import { Nav } from "@/components/Nav";
+import { FilmHost } from "@/components/Film";
 
 export const metadata: Metadata = { title: "CardQuest", description: "Walk to crates on the map. Open them for real graded trading cards.", manifest: "/manifest.webmanifest", appleWebApp: { capable: true, title: "CardQuest", statusBarStyle: "black-translucent" } };
 export const viewport: Viewport = { themeColor: "#0b0b0d", width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover" };
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <main>{children}</main>
             <Nav />
           </div>
+          <FilmHost />
         </Providers>
       </body>
     </html>

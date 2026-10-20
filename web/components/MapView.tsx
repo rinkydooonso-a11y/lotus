@@ -10,6 +10,7 @@ import type { Crate, OpenResult } from "@/lib/types";
 import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
 import { RotatingCity } from "./RotatingCity";
+import { openFilm } from "./Film";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
 const STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/dark";
@@ -246,6 +247,7 @@ export default function MapView() {
             <h2>Graded cards are dropping in <RotatingCity /></h2>
             <p className="muted">Walk to a crate, open it, and you could pull a real slabbed card.</p>
             <button className="btn wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
+            <button className="linkbtn" onClick={openFilm}>▶ Watch how it works</button>
           </div>
         )
       )}
