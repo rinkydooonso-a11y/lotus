@@ -16,11 +16,10 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
-import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH, parseSecretKey } from '../src/config.js';
+import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH, parseSecretKey, SINGLE_SIGNER_PHRASE } from '../src/config.js';
 import { assertSafeMultisig } from '../src/squads.js';
 
 const { Permission, Permissions } = multisig.types;
-const SINGLE_SIGNER_PHRASE = 'yes-one-wallet-controls-the-vault';
 const GENESIS: Record<string, string> = { mainnet: MAINNET_GENESIS_HASH, devnet: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG' };
 
 /** Set once a create may have reached the chain, so any later error repeats where to look. */

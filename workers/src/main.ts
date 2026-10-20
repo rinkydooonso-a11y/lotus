@@ -21,6 +21,7 @@ import { createPumpFeeGateway } from './pumpFees.js';
 import { runBuyTick } from './cardBuyer.js';
 import { createBuyerGateway } from './buyerGateway.js';
 import { createMagicEden, jupiterSolUsd } from './magicEden.js';
+import { dasGetAsset } from './das.js';
 import { MAX_QUEUE_ATTEMPTS, runPrizeSenderTick } from './prizeSender.js';
 import { createSolanaChain } from './solanaChain.js';
 import { jsonLogger as log, type PrizeQueue } from './types.js';
@@ -258,8 +259,26 @@ async function main() {
           solUsd: () => jupiterSolUsd(),
           solUsdBounds: [config.SOL_USD_MIN, config.SOL_USD_MAX],
           getOwner: async (mint) => (await chain.getAsset(mint))?.owner ?? null,
+          getCard: async (mint) => {
+            // Collection from chain state (verified only); traits and authorities from DAS.
+            const [asset, das] = await Promise.all([chain.getAsset(mint), dasGetAsset(config.HELIUS_DAS_URL ?? config.SOLANA_RPC_URL, mint)]);
+            if (!asset || !das) return null;
+            const attributes: Record<string, string> = {};
+            for (const a of das.content?.metadata?.attributes ?? []) attributes[a.trait_type] = String(a.value);
+            return {
+              collection: asset.collection,
+              authorities: (das.authorities ?? []).map((a) => a.address),
+              name: das.content?.metadata?.name ?? asset.name,
+              image: das.content?.links?.image ?? null,
+              attributes,
+            };
+          },
+          collectionAddress: config.BUY_COLLECTION_ADDRESS!,
+          updateAuthority: config.BUY_UPDATE_AUTHORITY!,
         });
-        log.info('card buyer on', { spendingLimit: config.BUYER_SPENDING_LIMIT, collection: config.BUY_COLLECTION });
+        log.info('card buyer on', {
+          spendingLimit: config.BUYER_SPENDING_LIMIT, limitSol: gateway.limit.amountSol, period: gateway.limit.period, collection: config.BUY_COLLECTION,
+        });
         deps = {
           store: new PgBuyerStore(db),
           gateway,
@@ -276,6 +295,7 @@ async function main() {
             maxOverheadBps: config.BUY_MAX_OVERHEAD_BPS,
           },
           gasReserveLamports: BigInt(Math.round(config.BUY_GAS_RESERVE_SOL * 1e9)),
+          weeklyMaxLamports: BigInt(Math.round(config.BUY_WEEKLY_MAX_SOL * 1e9)),
           log,
         };
       }

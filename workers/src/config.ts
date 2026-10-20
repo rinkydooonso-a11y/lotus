@@ -41,6 +41,8 @@ const EnvSchema = z.object({
   /** Wanted available cards per tier in the hot wallet, e.g. common:10,uncommon:4,rare:2,grail:1 */
   /** The worker refuses a multisig whose approval threshold is lower than this. 1 only for a deliberately single-signer safe. */
   SQUADS_MIN_THRESHOLD: z.coerce.number().int().min(1).default(2),
+  /** Must be exactly SINGLE_SIGNER_PHRASE for SQUADS_MIN_THRESHOLD=1. */
+  SQUADS_ALLOW_SINGLE_SIGNER: z.string().optional(),
   TOPUP_TARGETS: z.string().default('common:10,uncommon:4,rare:2,grail:1'),
   TOPUP_MAX_CARDS: z.coerce.number().int().min(1).max(20).default(10),
   TOPUP_MAX_USD: z.coerce.number().min(0).default(500),
@@ -70,7 +72,13 @@ const EnvSchema = z.object({
   BUY_REQUIRED_TRAITS: z.string().default(''),
   BUY_VALUE_TRAIT: z.string().min(1).default('Insured Value'),
   BUY_GRADE_TRAIT: z.string().default('Grade'),
+  /** Magic Eden collection symbol: where listings are read from. */
   BUY_COLLECTION: z.string().min(1).default('collector_crypt'),
+  /** The verified on-chain Collector Crypt collection and update authority. Required with the buyer. */
+  BUY_COLLECTION_ADDRESS: base58Address.optional(),
+  BUY_UPDATE_AUTHORITY: base58Address.optional(),
+  /** Off-chain backstop: card spend over any 7 days, on top of the on-chain spending limit. */
+  BUY_WEEKLY_MAX_SOL: z.coerce.number().positive().default(20),
   BUY_MAX_PRICE_TO_VALUE: z.coerce.number().positive().max(2).default(1),
   BUY_MAX_SOL_PER_CARD: z.coerce.number().positive().max(100).default(1),
   BUY_MAX_CARDS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
@@ -91,6 +99,7 @@ const EnvSchema = z.object({
   PRIORITY_FEE_MICROLAMPORTS: z.coerce.number().int().min(0).default(10_000),
 });
 
+export const SINGLE_SIGNER_PHRASE = 'yes-one-wallet-controls-the-vault';
 export const MAINNET_CONFIRMATION_PHRASE = 'yes-send-real-prizes-on-mainnet';
 export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 
@@ -124,8 +133,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (parsed.data.PUMP_COIN_MINT && !parsed.data.SQUADS_VAULT_ADDRESS) {
     throw new Error('Invalid worker environment:\n  the fee claimer needs SQUADS_VAULT_ADDRESS');
   }
-  if (parsed.data.BUYER_SPENDING_LIMIT && !parsed.data.SQUADS_MULTISIG_ADDRESS) {
-    throw new Error('Invalid worker environment:\n  the card buyer needs SQUADS_MULTISIG_ADDRESS');
+  if (parsed.data.SQUADS_MIN_THRESHOLD < 2 && parsed.data.SQUADS_ALLOW_SINGLE_SIGNER !== SINGLE_SIGNER_PHRASE) {
+    throw new Error(`Invalid worker environment:\n  SQUADS_MIN_THRESHOLD=1 also needs SQUADS_ALLOW_SINGLE_SIGNER=${SINGLE_SIGNER_PHRASE}`);
+  }
+  if (parsed.data.BUYER_SPENDING_LIMIT) {
+    const missing = (['SQUADS_MULTISIG_ADDRESS', 'BUY_COLLECTION_ADDRESS', 'BUY_UPDATE_AUTHORITY'] as const).filter((k) => !parsed.data[k]);
+    if (missing.length) throw new Error(`Invalid worker environment:\n  the card buyer needs ${missing.join(', ')}`);
+    if (!parsed.data.BUY_REQUIRED_TRAITS.trim()) {
+      throw new Error('Invalid worker environment:\n  the card buyer needs BUY_REQUIRED_TRAITS (it keeps merch and sealed product out)');
+    }
   }
   return {
     ...parsed.data,

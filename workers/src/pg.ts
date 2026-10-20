@@ -393,6 +393,14 @@ export class PgBuyerStore implements BuyerStore {
     return out;
   }
 
+  async spentSince(since: Date): Promise<bigint> {
+    const { rows } = await this.db.query<{ s: string }>(
+      `SELECT COALESCE(sum(price_lamports), 0)::text AS s FROM card_purchases WHERE status <> 'failed' AND created_at >= $1`,
+      [since],
+    );
+    return BigInt(rows[0]!.s);
+  }
+
   async ownedMints(): Promise<Set<string>> {
     const { rows } = await this.db.query<{ m: string }>(
       `SELECT nft_mint AS m FROM inventory_items

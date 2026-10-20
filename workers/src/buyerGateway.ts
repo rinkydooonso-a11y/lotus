@@ -75,11 +75,49 @@ export interface BuyerGatewayConfig {
   solUsd(): Promise<number>;
   solUsdBounds: [number, number];
   getOwner(mint: string): Promise<string | null>;
+  /** The card as chain and DAS see it: verified collection, authorities, and metadata traits. */
+  getCard(mint: string): Promise<OnChainCard | null>;
+  /** Pinned Collector Crypt collection and update authority; anything else is refused. */
+  collectionAddress: string;
+  updateAuthority: string;
+}
+
+export interface OnChainCard {
+  /** Verified collection only (Token Metadata 'verified', or the Core asset's collection). */
+  collection: string | null;
+  authorities: string[];
+  name: string | null;
+  image: string | null;
+  attributes: Record<string, string>;
+}
+
+const TOKEN_PROGRAMS = new Set(['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb']);
+
+/**
+ * Pure: refuses a buy that could touch anything the hot wallet already holds. `writable` are the
+ * accounts the transaction may write, with their current state; only the new card's own account
+ * may be a hot-owned token account or Core asset.
+ */
+export function checkNoHotAssetsWritable(
+  writable: Array<{ key: string; owner: string; data: Buffer } | { key: string; owner: null; data: null }>,
+  hot: string,
+  cardAccount: string,
+): void {
+  for (const a of writable) {
+    if (a.key === cardAccount || a.owner === null) continue;
+    if (TOKEN_PROGRAMS.has(a.owner) && a.data.length >= AccountLayout.span) {
+      if (AccountLayout.decode(a.data).owner.toBase58() === hot) throw new Error(`buy transaction writes to a hot-wallet token account ${a.key}`);
+    } else if (a.owner === MPL_CORE && a.data.length >= 33 && a.data[0] === 1) {
+      if (new PublicKey(a.data.subarray(1, 33)).toBase58() === hot) throw new Error(`buy transaction writes to a hot-wallet Core asset ${a.key}`);
+    }
+  }
 }
 
 const PERIOD_SECONDS: Record<number, number> = { 1: 86_400, 2: 604_800, 3: 2_592_000 };
 
-export async function createBuyerGateway(cfg: BuyerGatewayConfig): Promise<BuyerGateway> {
+export async function createBuyerGateway(
+  cfg: BuyerGatewayConfig,
+): Promise<BuyerGateway & { limit: { amountSol: number; period: string } }> {
   const connection = new Connection(cfg.rpcUrl, 'confirmed');
   if ((await connection.getGenesisHash()) === MAINNET_GENESIS_HASH && cfg.allowMainnet !== MAINNET_CONFIRMATION_PHRASE) {
     throw new Error(`Refusing to buy cards on mainnet without LOTUS_ALLOW_MAINNET=${MAINNET_CONFIRMATION_PHRASE}.`);
@@ -93,19 +131,33 @@ export async function createBuyerGateway(cfg: BuyerGatewayConfig): Promise<Buyer
     if (!sl.multisig.equals(multisigPda)) throw new Error('spending limit belongs to a different multisig');
     if (!sl.mint.equals(PublicKey.default)) throw new Error('spending limit is not for SOL');
     if (sl.vaultIndex !== 0) throw new Error('spending limit is not for vault 0');
-    if (!sl.members.some((m) => m.equals(hot))) throw new Error('hot wallet is not a member of the spending limit');
-    if (sl.destinations.length > 0 && !sl.destinations.some((d) => d.equals(hot))) {
-      throw new Error('spending limit does not allow the hot wallet as a destination');
+    // Exactly the hot wallet on both sides: empty destinations would mean "anywhere" in Squads v4.
+    if (sl.members.length !== 1 || !sl.members[0]!.equals(hot)) throw new Error('spending limit members must be exactly the hot wallet');
+    if (sl.destinations.length !== 1 || !sl.destinations[0]!.equals(hot)) {
+      throw new Error('spending limit destinations must be exactly the hot wallet');
     }
+    if (PERIOD_SECONDS[sl.period as number] === undefined) throw new Error('spending limit must reset (day, week or month), not be one-time');
     return sl;
   };
-  await readLimit();
+  const initial = await readLimit();
 
   const state = async (signature: string) =>
     (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
 
   return {
     hotWallet: hot.toBase58(),
+    limit: {
+      amountSol: Number(BigInt(initial.amount.toString())) / 1e9,
+      period: ({ 1: 'day', 2: 'week', 3: 'month' } as Record<number, string>)[initial.period as number]!,
+    },
+
+    async verifyCard(listing) {
+      const card = await cfg.getCard(listing.mint);
+      if (!card) throw new Error('card not found on chain');
+      if (card.collection !== cfg.collectionAddress) throw new Error(`not in the Collector Crypt collection (got ${card.collection})`);
+      if (!card.authorities.includes(cfg.updateAuthority)) throw new Error('update authority is not Collector Crypt');
+      return { ...listing, name: card.name ?? listing.name, image: card.image, attributes: card.attributes };
+    },
 
     async solUsd() {
       const p = await cfg.solUsd();
@@ -142,6 +194,9 @@ export async function createBuyerGateway(cfg: BuyerGatewayConfig): Promise<Buyer
         luts.push(res.value);
       }
       checkBuyInstructions(TransactionMessage.decompile(msg, { addressLookupTableAccounts: luts }).instructions);
+      const keys = msg.getAccountKeys({ addressLookupTableAccounts: luts });
+      const writableKeys: PublicKey[] = [];
+      for (let i = 0; i < keys.length; i++) if (msg.isAccountWritable(i)) writableKeys.push(keys.get(i)!);
       // Every other required signature must already be present (e.g. the marketplace's notary).
       for (let i = 1; i < msg.header.numRequiredSignatures; i++) {
         if (tx.signatures[i]?.every((b) => b === 0)) throw new Error('buy transaction needs a signature we do not have');
@@ -153,6 +208,18 @@ export async function createBuyerGateway(cfg: BuyerGatewayConfig): Promise<Buyer
       if (!mintInfo) throw new Error('card mint not found');
       const core = mintInfo.owner.toBase58() === MPL_CORE;
       const cardAccount = core ? mint : getAssociatedTokenAddressSync(mint, hot, false, mintInfo.owner);
+
+      // Nothing the hot wallet already holds may be writable (prize cards, other token accounts).
+      const writable: Parameters<typeof checkNoHotAssetsWritable>[0] = [];
+      for (let i = 0; i < writableKeys.length; i += 100) {
+        const chunk = writableKeys.slice(i, i + 100);
+        const infos = await connection.getMultipleAccountsInfo(chunk, 'confirmed');
+        chunk.forEach((k, j) => {
+          const info = infos[j];
+          writable.push(info ? { key: k.toBase58(), owner: info.owner.toBase58(), data: info.data } : { key: k.toBase58(), owner: null, data: null });
+        });
+      }
+      checkNoHotAssetsWritable(writable, hot.toBase58(), cardAccount.toBase58());
 
       const before = BigInt(await connection.getBalance(hot, 'confirmed'));
       const sim = await connection.simulateTransaction(tx, {

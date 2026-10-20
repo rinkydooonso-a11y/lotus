@@ -75,6 +75,13 @@ export function classify(listing: Listing, policy: BuyPolicy, solUsd: number): C
   return { listing, tier, valueUsd, priceUsd, grade };
 }
 
+/** Pure: how many cards each tier is short of its target. */
+export function needsByTier(available: Record<Tier, number>, policy: BuyPolicy): Record<Tier, number> {
+  const out = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+  for (const t of TIERS) out[t] = Math.max(0, policy.targets[t] - (available[t] ?? 0));
+  return out;
+}
+
 /** Pure: cheapest qualifying listings per tier, cheaper tiers first, under the per-tick cap. */
 export function planBuys(
   available: Record<Tier, number>,
@@ -82,6 +89,8 @@ export function planBuys(
   owned: Set<string>,
   policy: BuyPolicy,
   solUsd: number,
+  /** Extra candidates per tier beyond the need, as replacements. */
+  spare = 0,
 ): Candidate[] {
   const candidates = listings
     .filter((l) => !owned.has(l.mint))
@@ -91,7 +100,8 @@ export function planBuys(
   const picks: Candidate[] = [];
   const seen = new Set<string>();
   for (const tier of TIERS) {
-    let need = Math.max(0, policy.targets[tier] - (available[tier] ?? 0));
+    const short = Math.max(0, policy.targets[tier] - (available[tier] ?? 0));
+    let need = short > 0 ? short + spare : 0;
     for (const c of candidates) {
       if (need === 0 || picks.length >= policy.maxCardsPerTick) break;
       if (c.tier !== tier || seen.has(c.listing.mint)) continue;
@@ -114,6 +124,8 @@ export interface BuyerStore {
   pending(): Promise<PendingPurchase[]>;
   /** 'available' cards per tier in the hot wallet. */
   availableByTier(): Promise<Record<Tier, number>>;
+  /** Lamports spent on purchases (sending or bought) since the given time. */
+  spentSince(since: Date): Promise<bigint>;
   /** Mints already in inventory or in a sending/bought purchase. */
   ownedMints(): Promise<Set<string>>;
   /** Inserts a 'sending' purchase. Throws if the mint already has a live purchase. */
@@ -138,6 +150,12 @@ export interface BuyerGateway {
    * signed transaction's signature and a function that broadcasts and confirms it.
    */
   prepareBuy(listing: Listing, maxSpend: bigint): Promise<{ signature: string; send(): Promise<void> }>;
+  /**
+   * Re-reads the card from chain: refuses it unless its verified collection is the pinned
+   * Collector Crypt collection, and returns the listing with name, image and traits from the
+   * asset's own metadata, so the marketplace's copy is never trusted for value or tier.
+   */
+  verifyCard(listing: Listing): Promise<Listing>;
   purchaseState(signature: string, createdAt: Date): Promise<PurchaseState>;
   ownsCard(mint: string): Promise<boolean>;
 }
@@ -154,6 +172,8 @@ export interface BuyDeps {
   policy: BuyPolicy;
   /** Keep at least this much SOL in the hot wallet for prize-sending gas. */
   gasReserveLamports: bigint;
+  /** Off-chain backstop to the on-chain limit: card spend over any 7 days, whatever SOL the wallet holds. */
+  weeklyMaxLamports: bigint;
   log: Logger;
 }
 
@@ -196,7 +216,9 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
   if (!short) return { kind: 'idle', reason: 'stocked' };
   const solUsd = await gateway.solUsd();
   const [listings, owned] = await Promise.all([deps.market.listings(), store.ownedMints()]);
-  const picks = planBuys(available, listings, owned, policy, solUsd);
+  // Plan with spares: a pick that fails the on-chain check is replaced by the next-cheapest one.
+  const needs = needsByTier(available, policy);
+  const picks = planBuys(available, listings, owned, { ...policy, maxCardsPerTick: policy.maxCardsPerTick * 4 }, solUsd, 3);
   if (picks.length === 0) {
     log.warn('cards needed but no listing passes the filters', { available });
     return { kind: 'idle', reason: 'no_matching_listings' };
@@ -205,7 +227,25 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
   // 3. Buy them one at a time, inside the weekly budget.
   let bought = 0;
   let spent = 0n;
-  for (const c of picks) {
+  for (const pick of picks) {
+    if (bought >= policy.maxCardsPerTick) break;
+    if (needs[pick.tier] === 0) continue;
+    let c: Candidate | null;
+    try {
+      c = classify(await gateway.verifyCard(pick.listing), policy, solUsd);
+    } catch (err) {
+      log.warn('listing failed the on-chain card check', { mint: pick.listing.mint, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    if (!c || needs[c.tier] === 0) {
+      log.warn('on-chain traits do not qualify the listing for a tier we need', { mint: pick.listing.mint, tier: c?.tier ?? null });
+      continue;
+    }
+    const weekSpent = await store.spentSince(new Date(Date.now() - 7 * 86_400_000));
+    if (weekSpent + c.listing.priceLamports > deps.weeklyMaxLamports) {
+      log.warn('weekly card budget reached; stopping', { spent: weekSpent.toString(), max: deps.weeklyMaxLamports.toString() });
+      return { kind: 'bought', cards: bought, spentLamports: spent.toString(), stopped: 'budget' };
+    }
     const maxSpend = c.listing.priceLamports + (c.listing.priceLamports * BigInt(policy.maxOverheadBps)) / 10_000n + 10_000_000n;
     const { walletLamports, limitRemainingLamports } = await gateway.budget();
     const shortfall = maxSpend + deps.gasReserveLamports - walletLamports;
@@ -240,6 +280,7 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
     }
     await store.markBought(id);
     bought++;
+    needs[c.tier]--;
     spent += c.listing.priceLamports;
     log.info('bought a card', { mint: c.listing.mint, tier: c.tier, valueUsd: c.valueUsd, priceUsd: Math.round(c.priceUsd * 100) / 100 });
   }
