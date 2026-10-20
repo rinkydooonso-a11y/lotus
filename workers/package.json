@@ -1,0 +1,31 @@
+{
+  "name": "@lotus/workers",
+  "version": "1.0.0",
+  "scripts": {
+    
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run",
+    "prize-sender": "tsx src/main.ts prize-sender",
+    "inventory-sync": "tsx src/main.ts inventory-sync",
+    "start": "tsx src/main.ts all"
+  },
+  "dependencies": {
+    "@lotus/server": "file:../server",
+    "@metaplex-foundation/mpl-core": "^1.10.0",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/mpl-toolbox": "^0.11.5",
+    "@metaplex-foundation/umi": "^1.6.0",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.6.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  },
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,23 @@
+# dependencies and build output
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+coverage/
+
+# secrets: never commit these
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*-keypair.json
+deploy/devnet/.devnet-hot-wallet.json
+.vercel/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*

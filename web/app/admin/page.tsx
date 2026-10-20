@@ -1,0 +1,74 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/lib/auth/client";
+import type { AdminInventoryItem, FlaggedPlayer, OddsRow } from "@/lib/types";
+
+export default function Admin() {
+  const { user, loading } = useAuth();
+  const [inv, setInv] = useState<AdminInventoryItem[]>([]);
+  const [odds, setOdds] = useState<OddsRow[]>([]);
+  const [flagged, setFlagged] = useState<FlaggedPlayer[]>([]);
+  const [msg, setMsg] = useState("");
+  const [form, setForm] = useState({ nftMint: "", cardName: "", grade: "", valueUsd: "", imageUrl: "" });
+
+  const load = useCallback(async () => {
+    const [a, b, c] = await Promise.all(["inventory", "odds", "flagged"].map((p) => fetch(`/api/admin/${p}`, { cache: "no-store" }).then((r) => r.json())));
+    setInv(a.items ?? []); setOdds(b.rows ?? []); setFlagged(c.players ?? []);
+  }, []);
+  useEffect(() => { if (user?.isAdmin) void load(); }, [user, load]);
+
+  if (loading) return <div className="page" />;
+  if (!user?.isAdmin) return <div className="page"><h1>Admin</h1><p className="muted">Not authorised.</p></div>;
+
+  const total = odds.reduce((s, r) => s + r.weight, 0);
+  const saveOdds = async () => {
+    if (total !== 1_000_000) { setMsg(`Weights must sum to 1,000,000 (now ${total.toLocaleString()}).`); return; }
+    const r = await fetch("/api/admin/odds", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows: odds }) });
+    setMsg(r.ok ? "Odds saved." : "Save failed.");
+  };
+  const freeze = async (p: FlaggedPlayer) => {
+    await fetch("/api/admin/flagged", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ playerId: p.playerId, frozen: !p.frozen }) });
+    await load();
+  };
+
+  const addItem = async () => {
+    const r = await fetch("/api/admin/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nftMint: form.nftMint.trim(), cardName: form.cardName.trim(), grade: form.grade.trim() || undefined, valueUsd: Number(form.valueUsd), imageUrl: form.imageUrl.trim() || undefined }) });
+    setMsg(r.ok ? "Card added." : "Couldn't add card (check fields)."); if (r.ok) { setForm({ nftMint: "", cardName: "", grade: "", valueUsd: "", imageUrl: "" }); await load(); }
+  };
+  const setStatus = async (id: string, status: "available" | "withheld" | "removed") => {
+    await fetch("/api/admin/inventory", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, status }) });
+    await load();
+  };
+
+  return (
+    <div className="page wide">
+      <h1>Admin</h1>
+      <h2>Odds (parts per 1,000,000)</h2>
+      <div className="card">
+        {odds.map((r, i) => (
+          <label key={r.tier} className="orow"><span>{r.tier}</span><input type="number" min={0} value={r.weight} onChange={(e) => setOdds(odds.map((o, j) => (j === i ? { ...o, weight: Number(e.target.value) } : o)))} /><span className="muted small">{total ? ((r.weight / total) * 100).toFixed(2) : 0}%</span></label>
+        ))}
+        <div className="dline"><button className="btn sm" onClick={() => void saveOdds()}>Save odds</button><span className="muted small">{msg}</span></div>
+      </div>
+      <h2>Flagged players</h2>
+      {flagged.length === 0 ? <p className="muted">None.</p> : (
+        <ul className="list">
+          {flagged.map((p) => (
+            <li key={p.playerId} className="item"><div className="grow"><strong className="mono">{p.wallet.slice(0, 6)}…{p.wallet.slice(-4)}</strong><div className="muted small">{p.reasons.join(", ")}</div></div><button className="btn sm ghost" onClick={() => void freeze(p)}>{p.frozen ? "Unfreeze" : "Freeze"}</button></li>
+          ))}
+        </ul>
+      )}
+      <h2>Inventory ({inv.length})</h2>
+      <div className="card">
+        {(["nftMint", "cardName", "grade", "valueUsd", "imageUrl"] as const).map((k) => (
+          <label key={k} className="orow"><span>{k}</span><input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></label>
+        ))}
+        <div className="dline"><button className="btn sm" onClick={() => void addItem()}>Add card (tier set from value)</button></div>
+      </div>
+      <div className="tablewrap"><table>
+        <thead><tr><th>Card</th><th>Grade</th><th>Tier</th><th>Value</th><th>Status</th><th></th></tr></thead>
+        <tbody>{inv.map((i) => <tr key={i.id}><td>{i.cardName}</td><td>{i.grade}</td><td>{i.tier}</td><td>${i.valueUsd}</td><td>{i.status}</td><td>{i.status === "available" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "withheld")}>Withhold</button>}{i.status === "withheld" && <button className="btn sm ghost" onClick={() => void setStatus(i.id, "available")}>Release</button>}</td></tr>)}</tbody>
+      </table></div>
+    </div>
+  );
+}

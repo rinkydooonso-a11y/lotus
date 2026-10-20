@@ -1,0 +1,21 @@
+{
+  "name": "@lotus/devnet-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mint": "tsx mint-test-nfts.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@metaplex-foundation/mpl-core": "^1.10.0",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/mpl-toolbox": "^0.11.5",
+    "@metaplex-foundation/umi": "^1.6.0",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
