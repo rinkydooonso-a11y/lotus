@@ -1,0 +1,7 @@
+{
+  "name": "lotus-loadtest",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node run.mjs" },
+  "dependencies": { "bs58": "^5.0.0", "tweetnacl": "^1.0.3" }
+}

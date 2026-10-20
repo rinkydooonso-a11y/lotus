@@ -1,0 +1,45 @@
+# Nightly logical backup of the Supabase database, kept 14 days as a private workflow artifact.
+# Needs one repository secret: SUPABASE_DB_URL = the Session pooler connection string (port 5432).
+# Restore steps: docs/rollback-runbook.md.
+name: db-backup
+on:
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC daily
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Skip when the secret is not set
+        id: guard
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB" ]; then echo "SUPABASE_DB_URL not set; skipping"; echo "skip=1" >> "$GITHUB_OUTPUT"; fi
+      - name: Install pg_dump 17 (matches Supabase Postgres 17)
+        if: steps.guard.outputs.skip != '1'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -q && sudo apt-get install -y -q postgresql-client-17
+      - name: Dump
+        if: steps.guard.outputs.skip != '1'
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir out
+          /usr/lib/postgresql/17/bin/pg_dump "$DB" --format=custom --no-owner --no-privileges \
+            --schema=public --exclude-table-data=location_pings \
+            --file="out/lotus-$(date -u +%Y%m%dT%H%MZ).dump"
+          ls -lh out
+      - uses: actions/upload-artifact@v4
+        if: steps.guard.outputs.skip != '1'
+        with:
+          name: lotus-db-${{ github.run_id }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error

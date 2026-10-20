@@ -3,6 +3,9 @@
 # Keep exactly one Machine (the prize sender must not run twice).
 app = 'lotus-workers'
 primary_region = 'iad'
+# On deploy/stop, SIGTERM lets the current prize-send tick finish before the machine is killed.
+kill_signal = 'SIGTERM'
+kill_timeout = '60s'
 
 [build]
   dockerfile = 'deploy/workers.Dockerfile'
@@ -11,5 +14,7 @@ primary_region = 'iad'
   size = 'shared-cpu-1x'
   memory = '512mb'
 
+# Restart on any exit (crash, OOM, 'workers crashed'). Uptime is watched from the web side:
+# /api/health turns red when the worker hasn't written a vault snapshot for 15 minutes.
 [[restart]]
   policy = 'always'
