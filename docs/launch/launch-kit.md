@@ -1,13 +1,13 @@
-# Lotus launch kit
+# CardQuest launch kit
 
-Fill in before posting: `$LOTUS` ticker/name if different, `COIN_ADDRESS_PLACEHOLDER`, `@LOTUS_X_HANDLE_PLACEHOLDER`, `GAME_URL_PLACEHOLDER`.
+Fill in before posting: `TICKER_PLACEHOLDER` (the coin ticker), `COIN_ADDRESS_PLACEHOLDER`, `GAME_URL_PLACEHOLDER`. X account: [@cardquestsol](https://x.com/cardquestsol).
 
 Rules for every post: no promises about returns or price, no "guaranteed", no "100x", no "moon". Say what the game does. Always say prizes depend on the vault, which is funded by trading fees.
 
 ## Pinned X thread
 
 **1/**
-Lotus is live.
+CardQuest is live.
 
 Walk around your city, find crates on the map, open them, and win real graded trading cards. Free to play.
 
@@ -40,7 +40,7 @@ Everything is public: the vault and the live odds.
 GAME_URL_PLACEHOLDER/vault
 
 **7/**
-Where prizes come from: trading fees on the Lotus coin buy the cards. More trading, more cards. Less trading, a thinner vault. Not financial advice, no promises.
+Where prizes come from: trading fees on the CardQuest coin buy the cards. More trading, more cards. Less trading, a thinner vault. Not financial advice, no promises.
 
 CA: COIN_ADDRESS_PLACEHOLDER
 
@@ -50,7 +50,7 @@ Anti-cheat is on. Fake GPS and teleporting get flagged and frozen, and unsent pr
 ## Launch-day posts
 
 **Morning**
-Lotus is open. Go outside, find a crate, win a real graded card. GAME_URL_PLACEHOLDER
+CardQuest is open. Go outside, find a crate, win a real graded card. GAME_URL_PLACEHOLDER
 
 **First winner** (use a real winner, with permission)
 First card out of the vault: [CARD NAME, GRADE], found by a player on a walk. Cards go straight to the winner's wallet. Check the vault: GAME_URL_PLACEHOLDER/vault
@@ -69,7 +69,7 @@ Day one done. Thanks for walking. Vault and odds stay public: GAME_URL_PLACEHOLD
 
 ## How-to-play blurb (short)
 
-Lotus is a free map game. Connect a Solana wallet, turn on location, and walk to a crate within about 40 metres. Open it to win a real graded trading card from a physical vault, or shards that turn into tickets. Redeem cards on Collector Crypt to have them shipped. Play safe and aware of your surroundings.
+CardQuest is a free map game. Connect a Solana wallet, turn on location, and walk to a crate within about 40 metres. Open it to win a real graded trading card from a physical vault, or shards that turn into tickets. Redeem cards on Collector Crypt to have them shipped. Play safe and aware of your surroundings.
 
 ## Blurb (one line)
 
