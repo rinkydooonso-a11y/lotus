@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth/client";
 
 export function ConnectSheet({ onClose }: { onClose?: () => void }) {
   const { wallets, select, connect, wallet, connecting } = useWallet();
-  const { busy, error, user } = useAuth();
+  const { busy, error, user, phantomDeeplink, connectPhantom } = useAuth();
   // close once signed in; the sheet can be mounted by several parents that don't all watch `user`
   useEffect(() => { if (user) onClose?.(); }, [user, onClose]);
   const pick = async (name: (typeof wallets)[number]["adapter"]["name"]) => {
@@ -22,13 +22,16 @@ export function ConnectSheet({ onClose }: { onClose?: () => void }) {
         <p className="muted">Sign a free message to log in. No transaction, no fees.</p>
         <div className="stack">
           {wallets.map((w) => {
-            const installed = w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable;
+            // In a phone browser the adapter would reopen the site inside Phantom's browser, where location
+            // doesn't work, so Phantom goes through the deeplink round trip and the player stays here.
+            const viaDeeplink = phantomDeeplink && w.adapter.name === "Phantom";
+            const installed = viaDeeplink || w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable;
             return (
-              <button key={w.adapter.name} className="row-btn" onClick={() => (installed ? pick(w.adapter.name) : window.open(w.adapter.url, "_blank"))}>
+              <button key={w.adapter.name} className="row-btn" onClick={() => (viaDeeplink ? connectPhantom() : installed ? pick(w.adapter.name) : window.open(w.adapter.url, "_blank"))}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={w.adapter.icon} alt="" width={28} height={28} />
                 <span>{w.adapter.name}</span>
-                <span className="muted small">{installed ? (connecting && wallet?.adapter.name === w.adapter.name) || busy ? "Connecting…" : "Detected" : "Install"}</span>
+                <span className="muted small">{viaDeeplink ? "Open app" : installed ? (connecting && wallet?.adapter.name === w.adapter.name) || busy ? "Connecting…" : "Detected" : "Install"}</span>
               </button>
             );
           })}

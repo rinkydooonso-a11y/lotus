@@ -8,6 +8,7 @@ import { deviceId } from "@/lib/device";
 import type { Crate, OpenResult } from "@/lib/types";
 import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
+import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
 const STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -33,6 +34,7 @@ export default function MapView() {
   const [opening, setOpening] = useState(false);
   const [result, setResult] = useState<OpenResult | null>(null);
   const [connect, setConnect] = useState(false);
+  const walletBrowser = useInWalletBrowser();
   const fixRef = useRef<Fix | null>(null);
   fixRef.current = fix;
 
@@ -146,13 +148,13 @@ export default function MapView() {
         <div className="cta">
           <h2>Hunt real cards.</h2>
           <p className="muted">Walk to crates near you. Open them for a shot at graded trading cards.</p>
-          <button className="btn" onClick={() => setConnect(true)}>Connect wallet to play</button>
+          {walletBrowser ? <WalletBrowserNotice /> : <button className="btn" onClick={() => setConnect(true)}>Connect wallet to play</button>}
         </div>
       )}
       {user && geoErr && !(user.isAdmin && !fix) && <div className="cta"><p>{geoErr}</p></div>}
       {user && !fix && (
         <div className="cta">
-          {!geoErr && <p className="muted">Finding you…</p>}
+          {walletBrowser ? <WalletBrowserNotice /> : !geoErr && <p className="muted">Finding you…</p>}
           {user.isAdmin && (
             <button className="btn" onClick={() => {
               // Admin-only testing aid for in-app wallet browsers that never answer the location prompt.
