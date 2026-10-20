@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { GAME } from './config';
 import { getPool, withTx } from './db';
 import { secureRng, type Rng } from './rng';
+import { cityFor, cityGateEnabled } from './cities';
 import { PositionSchema } from './schemas';
 import type { CrateKind, CrateView } from './types';
 import { isWater, loadAreaFor, pickSpawnPoints, type AreaData } from './walkable';
@@ -71,11 +72,13 @@ export async function insertCrate(
  * plazas) and never on water; if OSM data is unavailable they are a short nudge from the player (see decisions.md).
  */
 export async function spawnCratesNear(
-  input: { playerId: string; lat: number; lng: number },
+  input: { playerId: string; lat: number; lng: number; anywhere?: boolean },
   db: Pool = getPool(),
   rng: Rng = secureRng,
 ): Promise<CrateView[]> {
   const { playerId, lat, lng } = PositionSchema.parse(input);
+  // Launch-city gate: no new crates outside a service area (admins pass anywhere for testing).
+  if (!input.anywhere && cityGateEnabled() && !cityFor(lat, lng)) return [];
   // Fetched before the transaction so a slow Overpass never holds the player row lock. Null = unavailable.
   const area = await loadAreaFor(lat, lng);
   return withTx(db, async (c) => {

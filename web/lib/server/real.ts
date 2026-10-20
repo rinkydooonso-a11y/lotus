@@ -18,7 +18,7 @@ export const realServer: GameServer = {
   },
   async nearbyCrates(playerId, p) {
     await srv.recordLocationPing({ playerId, lat: p.lat, lng: p.lng, accuracyM: p.accuracyM, clientTs: p.ts, deviceId: p.deviceId, ip: p.ip ?? null });
-    return (await srv.spawnCratesNear({ playerId, lat: p.lat, lng: p.lng })).map(crateView);
+    return (await srv.spawnCratesNear({ playerId, lat: p.lat, lng: p.lng, anywhere: p.anywhere })).map(crateView);
   },
   async openCrate(playerId, crateId, p) {
     const player = await srv.getPlayer(playerId);
