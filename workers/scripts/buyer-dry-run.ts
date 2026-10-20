@@ -47,6 +47,9 @@ async function main() {
       mint: l.mint, seller: l.seller, priceSol: Number(l.priceLamports) / 1e9, interface: a.interface,
       collection: coll?.group_value ?? null, collectionVerified: coll?.verified ?? null,
       authorities: (a.authorities ?? []).map((x: any) => x.address),
+      // If cards have no verified collection, a verified creator is the next trust anchor to compare.
+      creators: (a.creators ?? []).map((x: any) => `${x.address}${x.verified ? ' (verified)' : ''}`),
+      compressed: a.compression?.compressed ?? false,
       onChainTraits: Object.fromEntries((a.content?.metadata?.attributes ?? []).map((x: any) => [x.trait_type, x.value])),
     }));
   }
