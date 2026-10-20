@@ -142,6 +142,8 @@ export interface SingletonLockOptions {
   maxWaitMs?: number;
   /** How often to confirm the lock is still held on its connection. */
   heartbeatMs?: number;
+  /** Runs on the lock connection right after the lock is taken; a throw releases the lock and is rethrown. */
+  verify?: (conn: LockConnection) => Promise<void>;
   /** Aborting (SIGTERM during a deploy) stops the retry loop; acquire then returns null. */
   signal?: AbortSignal;
   sleep?: (ms: number) => Promise<void>;
@@ -206,6 +208,15 @@ export async function acquireSingletonLock(
   }
 
   const held = client!;
+  if (opts.verify) {
+    try {
+      await opts.verify(held);
+    } catch (err) {
+      await held.query('SELECT pg_advisory_unlock_all()').catch(() => {});
+      await held.end().catch(() => {});
+      throw err;
+    }
+  }
   let done = false;
   const lose = (reason: string) => {
     if (done) return;
