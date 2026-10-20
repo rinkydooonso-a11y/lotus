@@ -66,6 +66,33 @@ Keeps the hot wallet stocked from the Squads vault without being able to move an
 
 Uses pump.fun's official SDK (`@pump-fun/pump-sdk`, pinned) to call the permissionless sweep, consolidate and `distribute_creator_fees(_v2)` instructions for `PUMP_COIN_MINT`. Fees go from pump's vault straight to the fee-sharing shareholders; the bot's key only pays gas. It refuses to send unless `SQUADS_VAULT_ADDRESS` is a shareholder with at least `FEE_MIN_VAULT_SHARE_BPS`, simulates first and skips anything under `FEE_CLAIM_MIN_BASE_UNITS`, and logs the vault's change read from the landed transaction as a `claim` treasury event. A confirm timeout is checked against the signature status before giving up. Launch checklist: make the fee-sharing config's admin the vault itself, or revoke it, so no single key can redirect fees.
 
+## Card buyer (`card-buyer`)
+
+Buys Collector Crypt cards on Magic Eden straight into the hot wallet when a tier runs short.
+Money comes from the vault through a Squads **spending limit**: the signers approve once that the
+hot wallet may pull N SOL per week, to itself only (`scripts/add-spending-limit.ts` proposes it).
+The program enforces the cap, so a leaked hot-wallet key loses at most a week's budget.
+
+- Magic Eden is only a price feed and transaction builder. Before buying, the card is re-read from
+  chain: its verified collection must be `BUY_COLLECTION_ADDRESS` and `BUY_UPDATE_AUTHORITY` must be
+  among its authorities, and traits, insured value and grade come from the asset's own metadata (DAS).
+- Listings must carry `BUY_REQUIRED_TRAITS` (required: the buyer won't start without it) and an insured value (`BUY_VALUE_TRAIT`); the tier
+  comes from that value, and the price must be at most `BUY_MAX_PRICE_TO_VALUE` of it and under
+  `BUY_MAX_SOL_PER_CARD`. SOL/USD comes from Jupiter and is bounds-checked.
+- Magic Eden builds the buy transaction, so it is untrusted: only compute-budget, memo, SOL
+  transfer, ATA-create and known buy instructions may appear (anything else, e.g. a listing of a
+  card we hold, is refused), and a simulation must show the hot wallet spending at most the price
+  plus `BUY_MAX_OVERHEAD_BPS` and ending up owning the card. No other token account or Core asset
+  the hot wallet holds may be writable in it. Only then is it signed.
+- The spending limit must name exactly the hot wallet as member and destination, and reset (day,
+  week or month); its amount is logged at startup. `BUY_WEEKLY_MAX_SOL` is an off-chain backstop on
+  card spend over any 7 days, since the buyer can also spend SOL that reached the hot wallet otherwise.
+- **If the hot wallet key leaks**: the exposure is the prize cards plus up to the weekly limit from
+  the vault, every period. Step one is a signer removing the spending limit in the Squads app.
+- A `card_purchases` row is written before broadcasting; the next tick settles any 'sending' row
+  from chain state and ownership, and nothing new is bought while one is unresolved. A bought card
+  is added as `available` in the hot wallet with its cost, and logged as a purchase.
+
 ## Safety
 
 - Hot wallet key only from `HOT_WALLET_SECRET_KEY` (host secret store). Never logged; config errors name the variable, never the value.

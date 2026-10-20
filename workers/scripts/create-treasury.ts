@@ -7,7 +7,8 @@
  *
  * The multisig gets the given signers with full permissions, the proposer bot with Initiate only,
  * no config authority (membership and threshold can only change by a signer vote), and no time
- * lock. TREASURY_NETWORK (mainnet or devnet) must match the RPC's network. PAYER_KEYPAIR is a path to a solana-keygen JSON file and only pays rent and the Squads fee;
+ * lock. The threshold must be at least 2 unless TREASURY_ALLOW_SINGLE_SIGNER=yes-one-wallet-controls-the-vault.
+ * TREASURY_NETWORK (mainnet or devnet) must match the RPC's network. PAYER_KEYPAIR is a path to a solana-keygen JSON file and only pays rent and the Squads fee;
  * it gets no say in the multisig unless it is also a signer. On mainnet --send also needs
  * LOTUS_ALLOW_MAINNET=yes-send-real-prizes-on-mainnet.
  */
@@ -15,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
-import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH, parseSecretKey } from '../src/config.js';
+import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH, parseSecretKey, SINGLE_SIGNER_PHRASE } from '../src/config.js';
 import { assertSafeMultisig } from '../src/squads.js';
 
 const { Permission, Permissions } = multisig.types;
@@ -53,8 +54,12 @@ async function main() {
   const offCurve = signers.filter((s) => !PublicKey.isOnCurve(s.toBytes()));
   if (offCurve.length) throw new Error(`not wallet addresses (can never sign): ${offCurve.map((s) => s.toBase58()).join(', ')}`);
   if (unique.has(proposer.toBase58())) throw new Error('the proposer bot must not also be a signer');
-  if (!Number.isInteger(threshold) || threshold < 2 || threshold > signers.length) {
-    throw new Error(`TREASURY_THRESHOLD must be between 2 and ${signers.length}`);
+  // One signer is allowed only when asked for explicitly: then that one wallet is the vault's security.
+  const singleOk = process.env.TREASURY_ALLOW_SINGLE_SIGNER === SINGLE_SIGNER_PHRASE;
+  const minThreshold = singleOk ? 1 : 2;
+  if (!Number.isInteger(threshold) || threshold < minThreshold || threshold > signers.length) {
+    throw new Error(`TREASURY_THRESHOLD must be between ${minThreshold} and ${signers.length}`
+      + (singleOk ? '' : ` (a 1-signer safe also needs TREASURY_ALLOW_SINGLE_SIGNER=${SINGLE_SIGNER_PHRASE})`));
   }
 
   const payerPath = need('PAYER_KEYPAIR').replace(/^~(?=\/)/, homedir());
@@ -71,6 +76,7 @@ async function main() {
     rpcHost: new URL(rpcUrl).host,
     signers: signers.map((s) => s.toBase58()),
     threshold: `${threshold} of ${signers.length}`,
+    warning: threshold === 1 ? 'ONE SIGNER: whoever holds that one wallet controls the whole vault' : undefined,
     recovery: threshold === signers.length
       ? 'NONE: losing any one signer key locks the safe forever'
       : `still opens if up to ${signers.length - threshold} signer key(s) are lost`,

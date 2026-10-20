@@ -2,6 +2,7 @@ import type pg from 'pg';
 import type { DiscrepancyKind, OpenDiscrepancy, Snapshot, SyncStore, TrackedItem } from './inventorySync.js';
 import type { Logger, PrizeTx, SignedTransfer, TxLog, TxState } from './types.js';
 import type { OpenProposal, Tier, TopUpStore, VaultCard } from './topUp.js';
+import type { BuyerStore, Candidate, PendingPurchase } from './cardBuyer.js';
 import type { ClaimLog } from './feeClaimer.js';
 
 export class PgTxLog implements TxLog {
@@ -369,6 +370,103 @@ export class PgClaimLog implements ClaimLog {
     await this.db.query(
       `INSERT INTO treasury_events (kind, amount, asset, tx_signature, note) VALUES ('claim', $1, $2, $3, $4)`,
       [e.amount, e.asset, e.signature, e.note],
+    );
+  }
+}
+
+export class PgBuyerStore implements BuyerStore {
+  constructor(private readonly db: pg.Pool) {}
+
+  async pending(): Promise<PendingPurchase[]> {
+    const { rows } = await this.db.query<{ id: string; nft_mint: string; tx_signature: string; created_at: Date }>(
+      `SELECT id, nft_mint, tx_signature, created_at FROM card_purchases WHERE status = 'sending' ORDER BY id`,
+    );
+    return rows.map((r) => ({ id: String(r.id), mint: r.nft_mint, signature: r.tx_signature, createdAt: r.created_at }));
+  }
+
+  async availableByTier(): Promise<Record<Tier, number>> {
+    const { rows } = await this.db.query<{ tier: Tier; n: number }>(
+      `SELECT tier, count(*)::int AS n FROM inventory_items WHERE status = 'available' GROUP BY tier`,
+    );
+    const out: Record<Tier, number> = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+    for (const r of rows) out[r.tier] = r.n;
+    return out;
+  }
+
+  async spentSince(since: Date): Promise<bigint> {
+    const { rows } = await this.db.query<{ s: string }>(
+      `SELECT COALESCE(sum(price_lamports), 0)::text AS s FROM card_purchases WHERE status <> 'failed' AND created_at >= $1`,
+      [since],
+    );
+    return BigInt(rows[0]!.s);
+  }
+
+  async ownedMints(): Promise<Set<string>> {
+    const { rows } = await this.db.query<{ m: string }>(
+      `SELECT nft_mint AS m FROM inventory_items
+       UNION SELECT nft_mint FROM card_purchases WHERE status <> 'failed'`,
+    );
+    return new Set(rows.map((r) => r.m));
+  }
+
+  async insertPending(c: Candidate, signature: string, solUsd: number): Promise<string> {
+    const l = c.listing;
+    const { rows } = await this.db.query<{ id: string }>(
+      `INSERT INTO card_purchases (nft_mint, seller, price_lamports, sol_usd, card_name, grade, value_usd, tier, image_url, tx_signature, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'sending') RETURNING id`,
+      [l.mint, l.seller, l.priceLamports.toString(), solUsd, l.name, c.grade, c.valueUsd, c.tier, l.image, signature],
+    );
+    return String(rows[0]!.id);
+  }
+
+  async markBought(id: string): Promise<void> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<{
+        nft_mint: string; card_name: string; grade: string | null; value_usd: string; tier: Tier; image_url: string | null;
+        price_lamports: string; sol_usd: string; tx_signature: string; seller: string;
+      }>(
+        `SELECT nft_mint, card_name, grade, value_usd, tier, image_url, price_lamports, sol_usd, tx_signature, seller
+           FROM card_purchases WHERE id = $1 AND status = 'sending' FOR UPDATE`,
+        [id],
+      );
+      const p = rows[0];
+      if (p) {
+        const costUsd = (Number(p.price_lamports) / 1e9) * Number(p.sol_usd);
+        const item = await client.query<{ id: string }>(
+          `INSERT INTO inventory_items (nft_mint, card_name, grade, value_usd, tier, status, location, cost_usd, image_url, metadata)
+           VALUES ($1, $2, $3, $4, $5, 'available', 'hot', $6, $7, $8)
+           ON CONFLICT (nft_mint) DO NOTHING RETURNING id`,
+          [p.nft_mint, p.card_name, p.grade, p.value_usd, p.tier, costUsd.toFixed(2), p.image_url,
+            JSON.stringify({ source: 'magic_eden', seller: p.seller, purchaseTx: p.tx_signature })],
+        );
+        const itemId = item.rows[0]?.id ?? null;
+        await client.query(
+          `UPDATE card_purchases SET status = 'bought', inventory_item_id = $2, updated_at = now(),
+                  note = CASE WHEN $2::uuid IS NULL THEN 'mint was already in inventory' ELSE note END
+            WHERE id = $1`,
+          [id, itemId],
+        );
+        await client.query(
+          `INSERT INTO treasury_events (kind, amount, asset, usd_value, tx_signature, note, inventory_item_id)
+           VALUES ('purchase', $1::numeric / 1e9, 'SOL', $2, $3, $4, $5)`,
+          [p.price_lamports, costUsd.toFixed(2), p.tx_signature, `bought ${p.card_name} on Magic Eden`, itemId],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markFailed(id: string, note: string): Promise<void> {
+    await this.db.query(
+      `UPDATE card_purchases SET status = 'failed', note = $2, updated_at = now() WHERE id = $1 AND status = 'sending'`,
+      [id, note],
     );
   }
 }

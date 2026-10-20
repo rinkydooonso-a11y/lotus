@@ -7,9 +7,16 @@ const DasAssetSchema = z.object({
   interface: z.string(),
   burnt: z.boolean().optional(),
   ownership: z.object({ owner: z.string() }),
+  authorities: z.array(z.object({ address: z.string() })).optional(),
   grouping: z.array(z.object({ group_key: z.string(), group_value: z.string() })).optional(),
   compression: z.object({ compressed: z.boolean() }).optional(),
-  content: z.object({ metadata: z.object({ name: z.string().optional() }).partial().optional() }).partial().optional(),
+  content: z.object({
+    metadata: z.object({
+      name: z.string().optional(),
+      attributes: z.array(z.object({ trait_type: z.string(), value: z.unknown() })).optional(),
+    }).partial().optional(),
+    links: z.object({ image: z.string().optional() }).partial().optional(),
+  }).partial().optional(),
 });
 export type DasAsset = z.infer<typeof DasAssetSchema>;
 
