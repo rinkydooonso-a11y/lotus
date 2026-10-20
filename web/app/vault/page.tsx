@@ -1,44 +1,34 @@
+import type { Metadata } from "next";
 import { game } from "@/lib/server";
-import type { Tier } from "@/lib/types";
+import { usd } from "@/lib/format";
+import { SiteFooter, TierRows } from "@/components/Docs";
 
 export const dynamic = "force-dynamic";
-const TIERS: { t: Tier; label: string; band: string }[] = [
-  { t: "common", label: "Common", band: "under $30" },
-  { t: "uncommon", label: "Uncommon", band: "$30 – $75" },
-  { t: "rare", label: "Rare", band: "$75 – $300" },
-  { t: "grail", label: "Grail", band: "$300+" },
-];
+export const metadata: Metadata = { title: "The vault · CardQuest" };
 
 export default async function Vault() {
   const v = await game.vaultStats();
   return (
-    <div className="page">
-      <h1>The <em>vault.</em></h1>
-      <p className="muted lede">Everything here is live and public. We never award a card the vault doesn&apos;t hold.</p>
-      <div className="stats">
-        <div className="stat"><span>Cards in vault</span><b>{v.cardsInVault}</b></div>
-        <div className="stat"><span>Insured value</span><b>${Math.round(v.totalValueUsd).toLocaleString()}</b></div>
-        <div className="stat"><span>Cards sent</span><b>{v.cardsSent}</b></div>
+    <div className="docs">
+      <section className="docs-hero">
+        <h1>The <em>vault.</em></h1>
+        <p className="docs-lede">Every card you can pull is here, live and public. We never award a card the vault doesn&apos;t hold.</p>
+      </section>
+      <div className="stat-cards three">
+        <div className="stat-card"><span className="eyebrow">Cards in vault</span><b>{v.cardsInVault}</b></div>
+        <div className="stat-card"><span className="eyebrow">Insured value</span><b>{usd(v.totalValueUsd)}</b></div>
+        <div className="stat-card"><span className="eyebrow">Cards sent</span><b>{v.cardsSent}</b></div>
       </div>
-      <h2>Prize tiers and odds</h2>
-      <ul className="list">
-        {TIERS.map(({ t, label, band }) => (
-          <li key={t} className="item">
-            <span className={`dot b-${t}`} />
-            <div className="grow"><strong className={`tc-${t}`}>{label}</strong><div className="muted small">{band} · {v.byTier[t].count} in vault</div></div>
-            <div className="right"><b>{(v.byTier[t].odds * 100).toFixed(2)}%</b><div className="muted small">per crate</div></div>
-          </li>
-        ))}
-      </ul>
-      <p className="muted small">Odds are before availability adjustments: a tier with no cards in the vault pays shards instead.</p>
-      <h2>Treasury activity</h2>
-      {v.recentTreasury.length === 0 ? <p className="muted">Nothing yet.</p> : (
-        <ul className="list">
-          {v.recentTreasury.map((e, i) => (
-            <li key={i} className="item"><div className="grow"><strong className="cap">{e.kind}</strong><div className="muted small">{e.note}</div></div><div className="muted small">{new Date(e.at).toLocaleDateString()}</div></li>
-          ))}
-        </ul>
-      )}
+      <section><h2>Tiers and odds</h2>
+        <p>Odds are per standard crate, before availability: a tier with no cards in the vault pays shards instead.</p>
+        <TierRows right={(t) => <span className="tier-count"><b>{(v.byTier[t].odds * 100).toFixed(2)}%</b> · {v.byTier[t].count} in vault</span>} />
+      </section>
+      <section><h2>Treasury activity</h2>
+        {v.recentTreasury.length === 0 ? <p>Nothing yet.</p> : (
+          <ul className="tx-list">{v.recentTreasury.map((e, i) => <li key={i}><span className="faint">{new Date(e.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span><b className="cap">{e.kind}</b><span className="grow">{e.note}</span></li>)}</ul>
+        )}
+      </section>
+      <SiteFooter />
     </div>
   );
 }

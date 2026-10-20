@@ -1,59 +1,78 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/client";
-import { LINKS, coinLive } from "@/lib/links";
+import { LINKS } from "@/lib/links";
 import { ConnectSheet } from "./ConnectSheet";
+import { CaChip, XButton } from "./CaChip";
 import { openFilm } from "./Film";
 import { Logo } from "./Logo";
-import { NavLinks } from "./Nav";
+import { NAV, NavLinks } from "./Nav";
 
-function CaChip() {
-  const [copied, setCopied] = useState(false);
-  const copy = () => { if (coinLive) void navigator.clipboard?.writeText(LINKS.coin).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
+function Account({ compact }: { compact?: boolean }) {
+  const { user, balances, signOut, loading } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  if (loading) return null;
+  if (!user) return (
+    <>
+      <button className="chip-signin" onClick={() => setOpen(true)}>Connect wallet</button>
+      {open && <ConnectSheet onClose={() => setOpen(false)} />}
+    </>
+  );
   return (
-    <button className="ca" onClick={copy} title={coinLive ? "Copy contract address" : "Contract address coming soon"}>
-      <b>CA</b><span className="mono">{copied ? "Copied" : coinLive ? `${LINKS.coin.slice(0, 4)}…${LINKS.coin.slice(-4)}` : "soon"}</span>
-      {coinLive && <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" strokeWidth="2" /></svg>}
-    </button>
+    <div className="menu-wrap">
+      <button className="acct" onClick={() => setMenu((m) => !m)}>
+        {balances && <span className="acct-bal"><span>◆ {balances.shards}</span><span className="gold">🎟 {balances.tickets}</span></span>}
+        <span className="avatar" />{!compact && <span className="acct-addr">{user.address.slice(0, 4)}…{user.address.slice(-4)}</span>}
+      </button>
+      {menu && (
+        <div className="acct-menu" onClick={() => setMenu(false)}>
+          <Link href="/history">My prizes</Link>
+          {user.isAdmin && <Link href="/admin">Admin</Link>}
+          <button onClick={() => void signOut()}>Disconnect</button>
+        </div>
+      )}
+    </div>
   );
 }
 
 export function Header() {
-  const { user, balances, signOut, loading } = useAuth();
-  const [open, setOpen] = useState(false);
+  const path = usePathname();
+  const home = path === "/";
   const [menu, setMenu] = useState(false);
   return (
-    <header className="top">
-      <Link href="/" className="brand" aria-label="CardQuest home"><Logo /></Link>
-      <div className="grow" />
-      <nav className="navlinks">
-        <button onClick={openFilm}>How it works</button>
-        <NavLinks />
-      </nav>
-      <CaChip />
-      <a className="xbtn" href={LINKS.x} target="_blank" rel="noopener noreferrer" aria-label="CardQuest on X">
-        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.77L17.75 3Zm-1.08 16.2h1.7L7.4 4.7H5.58l11.09 14.5Z" /></svg>
-      </a>
-      {user && balances && (
-        <div className="pills">
-          <span className="pill" title="10 shards = 1 ticket">◆ {balances.shards}</span>
-          <span className="pill tix" title="Tickets spawn a better crate">🎟 {balances.tickets}</span>
-        </div>
+    <>
+      <header className={home ? "desk-top" : "desk-top is-page"}>
+        <Link href="/" className="brand" aria-label="CardQuest home"><Logo /></Link>
+        <nav className="desk-nav">
+          <NavLinks />
+          <CaChip />
+          <XButton />
+          <Account />
+        </nav>
+      </header>
+      {!home && <div className="site-header-space" />}
+
+      <header className={home ? "hud" : "hud is-page"}>
+        <button className="brand" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-label="Menu">
+          <Logo size={26} /><svg className={menu ? "chev up" : "chev"} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5 6 8l4-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+        </button>
+        <div className="hud-right"><Account compact /></div>
+      </header>
+      {menu && (
+        <>
+          <div className="menu-scrim" onClick={() => setMenu(false)} />
+          <nav className="menu" onClick={() => setMenu(false)}>
+            <button className="menu-item" onClick={openFilm}>Watch the film</button>
+            {NAV.map((t) => <Link key={t.href} href={t.href} className="menu-item">{t.label}</Link>)}
+            <a className="menu-item muted" href={LINKS.collectorCrypt} rel="noopener noreferrer">Redeem or sell on Collector Crypt</a>
+            <div className="menu-foot"><CaChip full /><XButton /></div>
+            <Link href="/" className="pill wide">Back to the map</Link>
+          </nav>
+        </>
       )}
-      {!loading && !user && <button className="btn light sm" onClick={() => setOpen(true)}>Connect wallet</button>}
-      {user && (
-        <div className="menu-wrap">
-          <button className="btn ghost sm addr" onClick={() => setMenu((m) => !m)}><span className="avatar" /><span className="addr-t">{user.address.slice(0, 4)}…{user.address.slice(-4)}</span></button>
-          {menu && (
-            <div className="menu" onClick={() => setMenu(false)}>
-              {user.isAdmin && <Link href="/admin">Admin</Link>}
-              <button onClick={() => void signOut()}>Disconnect</button>
-            </div>
-          )}
-        </div>
-      )}
-      {open && !user && <ConnectSheet onClose={() => setOpen(false)} />}
-    </header>
+    </>
   );
 }

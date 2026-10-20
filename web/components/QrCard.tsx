@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import qrcode from "qrcode-generator";
 
 /** "Play on your phone": QR for the current site, so desktop visitors can jump to mobile. */
-export function QrCard() {
+export function QrCard({ className = "desk-qr" }: { className?: string }) {
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
   useEffect(() => setUrl(window.location.origin), []);
@@ -17,12 +17,12 @@ export function QrCard() {
   })();
   const copy = () => { void navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
   return (
-    <div className="panel-card qr">
-      <div className="qr-code" aria-label="QR code to open CardQuest on your phone" dangerouslySetInnerHTML={{ __html: svg }} />
-      <div className="qr-copy">
+    <div className={className}>
+      <div className="qr" aria-label="QR code to open CardQuest on your phone" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="desk-qr-text">
         <b>Play on your phone</b>
-        <p>Scan with your camera to open CardQuest in your phone&apos;s browser. Nothing to download.</p>
-        {host && <button className="chip" onClick={copy}>{copied ? "Copied" : host}<span aria-hidden="true">⧉</span></button>}
+        <p>Scan it with your phone&apos;s camera to play in the browser. No download needed.</p>
+        {host && <button className="copy-link" onClick={copy}>{copied ? "Copied" : host}<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" strokeWidth="2" /></svg></button>}
       </div>
     </div>
   );

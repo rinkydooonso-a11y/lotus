@@ -85,6 +85,8 @@ export interface FeedCollector {
 }
 
 export interface Feed {
+  /** All-time totals for the live stats strip. */
+  totals: { collectors: number; cardsPulled: number; wonUsd: number };
   recent: FeedPull[];
   biggest: FeedPull[];
   collectors: FeedCollector[];

@@ -139,6 +139,7 @@ export const stubServer: GameServer = {
     const byCollector = new Map<string, { cards: number; totalUsd: number }>();
     for (const x of all) { const c = byCollector.get(x.collector) ?? { cards: 0, totalUsd: 0 }; c.cards++; c.totalUsd += x.valueUsd; byCollector.set(x.collector, c); }
     return {
+      totals: { collectors: db.players.size + new Set(DEMO_PULLS.map((x) => x.collector)).size, cardsPulled: all.length, wonUsd: all.reduce((n, x) => n + x.valueUsd, 0) },
       recent: [...all].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20),
       biggest: [...all].sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 20),
       collectors: [...byCollector].map(([collector, c]) => ({ collector, ...c })).sort((a, b) => b.totalUsd - a.totalUsd).slice(0, 20),

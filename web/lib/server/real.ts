@@ -66,14 +66,18 @@ export const realServer: GameServer = {
   },
   async feed() {
     const db = srv.getPool();
-    const [recent, biggest, collectors] = await Promise.all([
+    const [recent, biggest, collectors, totals] = await Promise.all([
       db.query<PullRow>(`${PULLS_SQL} ORDER BY o.created_at DESC LIMIT 20`),
       db.query<PullRow>(`${PULLS_SQL} AND o.created_at > now() - interval '30 days' ORDER BY i.value_usd DESC LIMIT 20`),
       db.query<{ wallet_address: string; cards: number; total: string }>(`SELECT o.wallet_address, count(*)::int AS cards, sum(i.value_usd) AS total
         FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id
         WHERE o.result = 'card' AND o.status <> 'withheld' GROUP BY o.wallet_address ORDER BY total DESC LIMIT 20`),
+      db.query<{ collectors: number; pulled: number; won: string | null }>(`SELECT (SELECT count(*)::int FROM players) AS collectors, count(*)::int AS pulled, sum(i.value_usd) AS won
+        FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id WHERE o.result = 'card' AND o.status <> 'withheld'`),
     ]);
+    const t = totals.rows[0];
     return {
+      totals: { collectors: t?.collectors ?? 0, cardsPulled: t?.pulled ?? 0, wonUsd: Number(t?.won ?? 0) },
       recent: recent.rows.map(pullView),
       biggest: biggest.rows.map(pullView),
       collectors: collectors.rows.map((r) => ({ collector: maskWallet(r.wallet_address), cards: r.cards, totalUsd: Number(r.total) })),

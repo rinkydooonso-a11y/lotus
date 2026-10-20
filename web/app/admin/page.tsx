@@ -17,8 +17,8 @@ export default function Admin() {
   }, []);
   useEffect(() => { if (user?.isAdmin) void load(); }, [user, load]);
 
-  if (loading) return <div className="page" />;
-  if (!user?.isAdmin) return <div className="page"><h1>Admin</h1><p className="muted">Not authorised.</p></div>;
+  if (loading) return <div className="docs" />;
+  if (!user?.isAdmin) return <div className="docs"><h1>Admin</h1><p className="muted">Not authorised.</p></div>;
 
   const total = odds.reduce((s, r) => s + r.weight, 0);
   const saveOdds = async () => {
@@ -41,7 +41,7 @@ export default function Admin() {
   };
 
   return (
-    <div className="page wide">
+    <div className="docs wide">
       <h1>Admin <em>console.</em></h1>
       <h2>Odds (parts per 1,000,000)</h2>
       <div className="card">

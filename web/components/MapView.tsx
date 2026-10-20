@@ -9,12 +9,16 @@ import { SERVICE_CITIES } from "@/lib/cities";
 import type { Crate, OpenResult } from "@/lib/types";
 import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
-import { RotatingCity } from "./RotatingCity";
+import { CitySwap } from "./CitySwap";
+import { CaChip, XButton } from "./CaChip";
+import { Mark } from "./Logo";
+import { cityByName, useCity } from "@/lib/cityStore";
 import { openFilm } from "./Film";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
 const STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/dark";
-const PITCH_3D = 45;
+const PITCH_3D = 55;
+const BEARING_3D = -17;
 
 /** Swap the flat building fill for extruded buildings (OpenFreeMap/OpenMapTiles schema). */
 function add3dBuildings(m: maplibregl.Map) {
@@ -57,9 +61,11 @@ function addCityLayers(m: maplibregl.Map) {
     paint: { "text-color": "#f5f4f8", "text-halo-color": "#0b0b0d", "text-halo-width": 1.6 },
   });
 }
-function flyToCity(m: maplibregl.Map, center: [number, number]) {
-  m.flyTo({ center, zoom: 12, duration: 3200, curve: 1.6, essential: true });
+function flyToCity(m: maplibregl.Map, c: { lat: number; lng: number }) {
+  m.flyTo({ center: [c.lng, c.lat], zoom: 14.6, pitch: PITCH_3D, bearing: BEARING_3D, duration: 3600, curve: 1.6, essential: true });
 }
+/** Isometric crate marker; colours come from CSS (purple, or gold for ticket crates). */
+const CRATE_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true"><path class="lid" d="M24 4 43 14.5 24 25 5 14.5z"/><path class="l" d="M5 14.5 24 25v19L5 33.5z"/><path class="r" d="M43 14.5 24 25v19l19-10.5z"/><path class="band" d="M14 9.3 33 19.8v4.4L14 13.7z"/><path class="band" d="M22.6 24.2 24 25l1.4-.8v19l-1.4.8-1.4-.8z"/></svg>`;
 const PING_EVERY_MS = 5000;
 
 interface Fix { lat: number; lng: number; acc: number }
@@ -81,7 +87,9 @@ export default function MapView() {
   const [result, setResult] = useState<OpenResult | null>(null);
   const [connect, setConnect] = useState(false);
   const walletBrowser = useInWalletBrowser();
-  const [tilt, setTilt] = useState(false);
+  const [tilt, setTilt] = useState(true);
+  const city = useCity();
+  const flewToCity = useRef(false);
   const [outside, setOutside] = useState<{ name: string; km: number } | null>(null);
   const fixRef = useRef<Fix | null>(null);
   fixRef.current = fix;
@@ -105,7 +113,7 @@ export default function MapView() {
     });
     m.on("click", "cities-dot", (e) => {
       const f = e.features?.[0];
-      if (f?.geometry.type === "Point") flyToCity(m, f.geometry.coordinates as [number, number]);
+      if (f?.geometry.type === "Point") { const [lng, lat] = f.geometry.coordinates as [number, number]; spinning.current = false; flyToCity(m, { lat, lng }); }
     });
     m.on("mouseenter", "cities-dot", () => { m.getCanvas().style.cursor = "pointer"; });
     m.on("mouseleave", "cities-dot", () => { m.getCanvas().style.cursor = ""; });
@@ -153,10 +161,22 @@ export default function MapView() {
     if (!centered.current) {
       centered.current = true;
       spinning.current = false;
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) m.jumpTo({ center: [fix.lng, fix.lat], zoom: 17 });
-      else m.flyTo({ center: [fix.lng, fix.lat], zoom: 17, duration: 4000, curve: 1.7, essential: true });
+      const cam = { center: [fix.lng, fix.lat] as [number, number], zoom: 17, pitch: PITCH_3D, bearing: BEARING_3D };
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) m.jumpTo(cam);
+      else m.flyTo({ ...cam, duration: 4000, curve: 1.7, essential: true });
     }
   }, [fix]);
+
+  // Desktop spectators: after the globe intro, fly into the selected launch city (and follow the city bar).
+  useEffect(() => {
+    const m = map.current;
+    if (!m || centered.current || window.innerWidth < 900) return;
+    const go = () => { if (centered.current) return; spinning.current = false; flyToCity(m, cityByName(city)); };
+    if (flewToCity.current) { go(); return; }
+    flewToCity.current = true;
+    const t = setTimeout(go, 2600);
+    return () => clearTimeout(t);
+  }, [city]);
 
   // throttled crate fetch (also acts as the location ping)
   useEffect(() => {
@@ -180,11 +200,12 @@ export default function MapView() {
       let mk = markers.current.get(c.id);
       if (!mk) {
         const d = document.createElement("button");
-        d.className = "pin" + (c.kind === "ticket" ? " ticket" : "");
+        d.className = "crate" + (c.kind === "ticket" ? " ticket" : "");
         d.setAttribute("aria-label", c.kind === "ticket" ? "Ticket crate" : "Crate");
-        d.innerHTML = `<span>${c.kind === "ticket" ? "🎟" : "🎁"}</span><b>${c.kind === "ticket" ? "Ticket" : "Crate"}</b>`;
+        d.style.setProperty("--pop-delay", `${(markers.current.size % 8) * 70}ms`);
+        d.innerHTML = `<span class="crate-ring"></span><span class="crate-body">${CRATE_SVG}</span>`;
         d.onclick = (e) => { e.stopPropagation(); setSel(c.id); };
-        mk = new maplibregl.Marker({ element: d, anchor: "top", offset: [0, -24] }).setLngLat([c.lng, c.lat]).addTo(m);
+        mk = new maplibregl.Marker({ element: d, anchor: "bottom", pitchAlignment: "viewport", rotationAlignment: "viewport" }).setLngLat([c.lng, c.lat]).addTo(m);
         markers.current.set(c.id, mk);
       }
     }
@@ -234,8 +255,6 @@ export default function MapView() {
     <div className="mapwrap">
       <div ref={el} className="map" onClick={() => setSel(null)} />
       <div className="mapctl">
-        <button onClick={() => map.current?.zoomIn()} aria-label="Zoom in">+</button>
-        <button onClick={() => map.current?.zoomOut()} aria-label="Zoom out">−</button>
         <button className={tilt ? "on" : ""} onClick={toggleTilt} aria-label="Toggle 3D view">3D</button>
         <button onClick={recenter} aria-label="Center on me" disabled={!fix}>⌖</button>
       </div>
@@ -243,11 +262,15 @@ export default function MapView() {
 
       {!user && !loading && (
         walletBrowser ? <div className="cta"><WalletBrowserNotice /></div> : (
-          <div className="cta intro">
-            <h2>Graded cards are dropping in <RotatingCity /></h2>
-            <p className="muted">Walk to a crate, open it, and you could pull a real slabbed card.</p>
-            <button className="btn wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
-            <button className="linkbtn" onClick={openFilm}>▶ Watch how it works</button>
+          <div className="intro">
+            <div className="intro-card">
+              <Mark size={44} />
+              <h1>Graded cards are dropping in <CitySwap /></h1>
+              <p>Walk to a crate on the map, open it on your phone, and a real graded card could be yours.</p>
+              <button className="pill primary wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
+              <button className="intro-link" onClick={openFilm}>How it works</button>
+              <div className="intro-foot"><CaChip full /><XButton /></div>
+            </div>
           </div>
         )
       )}
@@ -271,7 +294,7 @@ export default function MapView() {
           <p className="eyebrow">Not live here yet</p>
           <h2>No crates in your area <em>yet.</em></h2>
           <p className="muted">CardQuest is launching city by city. Crates are dropping in {SERVICE_CITIES.length} cities right now, and the closest to you is <b>{outside.name}</b>, about {outside.km.toLocaleString("en-US")} km away. More cities open as the vault grows.</p>
-          <div className="city-chips">{SERVICE_CITIES.map((c) => <button key={c.name} className={c.name === outside.name ? "on" : ""} onClick={() => map.current && flyToCity(map.current, [c.lng, c.lat])}>{c.name}</button>)}</div>
+          <div className="city-chips">{SERVICE_CITIES.map((c) => <button key={c.name} className={c.name === outside.name ? "on" : ""} onClick={() => map.current && flyToCity(map.current, c)}>{c.name}</button>)}</div>
         </div>
       )}
       {user && fix && !outside && crates.length === 0 && !target && <div className="toast">Looking for crates nearby…</div>}

@@ -13,10 +13,10 @@ export default function History() {
     void fetch("/api/history", { cache: "no-store" }).then((r) => r.json()).then((j: { history: HistoryEntry[] }) => setRows(j.history));
   }, [user]);
 
-  if (loading) return <div className="page" />;
-  if (!user) return <div className="page"><h1>Your <em>pulls.</em></h1><div className="panel-card empty"><p className="muted">Connect your wallet from the map to see every crate you&apos;ve opened.</p></div></div>;
+  if (loading) return <div className="docs" />;
+  if (!user) return <div className="docs"><h1>Your <em>pulls.</em></h1><div className="panel-card empty"><p className="muted">Connect your wallet from the map to see every crate you&apos;ve opened.</p></div></div>;
   return (
-    <div className="page">
+    <div className="docs">
       <h1>Your <em>pulls.</em></h1>
       {balances && (
         <div className="stats">
