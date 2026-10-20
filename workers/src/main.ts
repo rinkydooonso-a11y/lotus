@@ -13,11 +13,14 @@ import { loadConfig, parseSecretKey } from './config.js';
 import { collectionOf, dasGetAssetsByOwner } from './das.js';
 import { runInventorySync } from './inventorySync.js';
 import { Keypair } from '@solana/web3.js';
-import { acquireSingletonLock, PgClaimLog, PgSyncStore, PgTopUpStore, PgTxLog } from './pg.js';
+import { acquireSingletonLock, PgBuyerStore, PgClaimLog, PgSyncStore, PgTopUpStore, PgTxLog } from './pg.js';
 import { createSquadsGateway } from './squads.js';
 import { runTopUpTick } from './topUp.js';
 import { runFeeClaimTick } from './feeClaimer.js';
 import { createPumpFeeGateway } from './pumpFees.js';
+import { runBuyTick } from './cardBuyer.js';
+import { createBuyerGateway } from './buyerGateway.js';
+import { createMagicEden, jupiterSolUsd } from './magicEden.js';
 import { MAX_QUEUE_ATTEMPTS, runPrizeSenderTick } from './prizeSender.js';
 import { createSolanaChain } from './solanaChain.js';
 import { jsonLogger as log, type PrizeQueue } from './types.js';
@@ -52,7 +55,7 @@ function loop(name: string, intervalMs: number, tick: () => Promise<void>, signa
 
 async function main() {
   const mode = process.argv[2] ?? 'all';
-  if (!['all', 'prize-sender', 'inventory-sync', 'maintenance', 'top-up', 'fee-claimer'].includes(mode)) {
+  if (!['all', 'prize-sender', 'inventory-sync', 'maintenance', 'top-up', 'fee-claimer', 'card-buyer'].includes(mode)) {
     throw new Error(`unknown mode ${mode}`);
   }
   const config = loadConfig();
@@ -229,6 +232,55 @@ async function main() {
       }
       const r = await runFeeClaimTick(deps);
       if (r.kind !== 'below_minimum') log.info('fee claim tick', r);
+    }, controller.signal));
+  }
+
+  const buyerOn = Boolean(config.BUYER_SPENDING_LIMIT);
+  if (mode === 'card-buyer' && !buyerOn) throw new Error('card-buyer needs BUYER_SPENDING_LIMIT and SQUADS_MULTISIG_ADDRESS');
+  if (mode === 'all' && !buyerOn) log.info('card buyer disabled: BUYER_SPENDING_LIMIT not set');
+  if ((mode === 'all' || mode === 'card-buyer') && buyerOn) {
+    let deps: Parameters<typeof runBuyTick>[0] | null = null;
+    loops.push(loop('card-buyer', config.BUY_INTERVAL_MS, async () => {
+      if (!deps) {
+        const market = createMagicEden({
+          collection: config.BUY_COLLECTION,
+          apiKey: config.MAGIC_EDEN_API_KEY,
+          pages: config.BUY_LISTING_PAGES,
+          requiredTraits: config.BUY_REQUIRED_TRAITS,
+        });
+        const gateway = await createBuyerGateway({
+          rpcUrl: config.SOLANA_RPC_URL,
+          hot: Keypair.fromSecretKey(parseSecretKey(config.HOT_WALLET_SECRET_KEY)),
+          multisigAddress: config.SQUADS_MULTISIG_ADDRESS!,
+          spendingLimitAddress: config.BUYER_SPENDING_LIMIT!,
+          allowMainnet: config.LOTUS_ALLOW_MAINNET,
+          buildBuyTx: (l, buyer) => market.buildBuyTx(l, buyer),
+          solUsd: () => jupiterSolUsd(),
+          solUsdBounds: [config.SOL_USD_MIN, config.SOL_USD_MAX],
+          getOwner: async (mint) => (await chain.getAsset(mint))?.owner ?? null,
+        });
+        log.info('card buyer on', { spendingLimit: config.BUYER_SPENDING_LIMIT, collection: config.BUY_COLLECTION });
+        deps = {
+          store: new PgBuyerStore(db),
+          gateway,
+          market,
+          policy: {
+            targets: config.BUY_TARGETS,
+            tierMinUsd: config.BUY_TIER_MIN_USD,
+            requiredTraits: config.BUY_REQUIRED_TRAITS,
+            valueTrait: config.BUY_VALUE_TRAIT,
+            gradeTrait: config.BUY_GRADE_TRAIT || null,
+            maxPriceToValue: config.BUY_MAX_PRICE_TO_VALUE,
+            maxLamportsPerCard: BigInt(Math.round(config.BUY_MAX_SOL_PER_CARD * 1e9)),
+            maxCardsPerTick: config.BUY_MAX_CARDS_PER_TICK,
+            maxOverheadBps: config.BUY_MAX_OVERHEAD_BPS,
+          },
+          gasReserveLamports: BigInt(Math.round(config.BUY_GAS_RESERVE_SOL * 1e9)),
+          log,
+        };
+      }
+      const r = await runBuyTick(deps);
+      if (r.kind !== 'idle' || r.reason !== 'stocked') log.info('card buyer tick', r);
     }, controller.signal));
   }
 
