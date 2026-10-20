@@ -56,6 +56,8 @@ const EnvSchema = z.object({
   PRIZE_SENDER_BATCH: z.coerce.number().int().min(1).max(50).default(10),
   PRIZE_SENDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
   INVENTORY_SYNC_INTERVAL_MS: z.coerce.number().int().min(10_000).default(120_000),
+  /** Location pings older than this are deleted hourly. Anti-cheat reads at most the last 6 hours. */
+  PING_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
   /** Priority fee in micro-lamports per compute unit. */
   PRIORITY_FEE_MICROLAMPORTS: z.coerce.number().int().min(0).default(10_000),
 });

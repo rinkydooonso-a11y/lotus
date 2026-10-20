@@ -1,4 +1,4 @@
-export type RejectCode = "not_found" | "not_yours" | "expired" | "already_opened" | "too_far" | "frozen" | "anticheat" | "invalid_input";
+export type RejectCode = "not_found" | "not_yours" | "expired" | "already_opened" | "too_far" | "frozen" | "anticheat" | "invalid_input" | "unavailable";
 export type Tier = "common" | "uncommon" | "rare" | "grail";
 
 export interface Crate {

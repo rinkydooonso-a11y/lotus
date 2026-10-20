@@ -57,3 +57,26 @@ export async function recordLocationPing(input: PingInput, db: Pool = getPool())
     [p.playerId, p.lat, p.lng, p.accuracyM, p.clientTs, p.deviceId, p.ip ?? null],
   );
 }
+
+/**
+ * Deletes location pings older than retentionDays, oldest first in batches, so the table stops growing.
+ * Walks the primary key (ids follow insert time) instead of scanning recorded_at, which has no index of its own.
+ * Anti-cheat reads at most the last anchorResetMs (6 h) of pings, so 30 days is plenty. Returns rows deleted.
+ */
+export async function pruneLocationPings(
+  { retentionDays = 30, batchSize = 5_000, maxBatches = 50 }: { retentionDays?: number; batchSize?: number; maxBatches?: number } = {},
+  db: Pool = getPool(),
+): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < maxBatches; i++) {
+    const r = await db.query(
+      `DELETE FROM location_pings
+        WHERE id IN (SELECT id FROM location_pings ORDER BY id LIMIT $1)
+          AND recorded_at < now() - make_interval(days => $2)`,
+      [batchSize, retentionDays],
+    );
+    total += r.rowCount ?? 0;
+    if ((r.rowCount ?? 0) < batchSize) break;
+  }
+  return total;
+}
