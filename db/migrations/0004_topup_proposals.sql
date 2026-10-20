@@ -11,9 +11,10 @@ CREATE TABLE topup_proposals (
   sol_lamports      bigint NOT NULL DEFAULT 0 CHECK (sol_lamports >= 0),
   note              text,
   created_at        timestamptz NOT NULL DEFAULT now(),
-  updated_at        timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (multisig, transaction_index)
+  updated_at        timestamptz NOT NULL DEFAULT now()
 );
+-- An abandoned row never reached the chain (or never went live), so its index can be reused.
+CREATE UNIQUE INDEX topup_proposals_index_live ON topup_proposals (multisig, transaction_index) WHERE status <> 'abandoned';
 CREATE UNIQUE INDEX topup_proposals_one_open ON topup_proposals ((true)) WHERE status IN ('creating', 'active');
 
 CREATE TABLE topup_proposal_items (

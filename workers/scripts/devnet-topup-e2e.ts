@@ -97,7 +97,7 @@ async function main() {
   const chain = await createSolanaChain(config);
   const gatewayCfg = {
     rpcUrl: RPC, multisigAddress: multisigPda.toBase58(), hotWallet: chain.hotWallet, expectedVault: vaultPda.toBase58(),
-    allowMainnet: undefined, getAsset: (m: string) => chain.getAsset(m), log,
+    allowMainnet: undefined, minThreshold: 2, getAsset: (m: string) => chain.getAsset(m), log,
   };
 
   let refused = false;

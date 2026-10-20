@@ -107,34 +107,40 @@ async function main() {
     }, controller.signal));
   }
 
+  // Treasury jobs build their gateway inside the loop: a refusal or RPC blip at startup is logged
+  // and retried each interval, and never stops the prize sender or inventory sync.
   const squadsOn = Boolean(config.SQUADS_MULTISIG_ADDRESS && config.SQUADS_PROPOSER_SECRET_KEY);
   if (mode === 'top-up' && !squadsOn) throw new Error('top-up needs SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY');
   if ((mode === 'all' || mode === 'top-up') && squadsOn) {
     const multisigAddress = config.SQUADS_MULTISIG_ADDRESS!;
-    const squads = await createSquadsGateway({
-      rpcUrl: config.SOLANA_RPC_URL,
-      multisigAddress,
-      proposer: Keypair.fromSecretKey(parseSecretKey(config.SQUADS_PROPOSER_SECRET_KEY!, 'SQUADS_PROPOSER_SECRET_KEY')),
-      hotWallet: chain.hotWallet,
-      expectedVault: config.SQUADS_VAULT_ADDRESS,
-      allowMainnet: config.LOTUS_ALLOW_MAINNET,
-      getAsset: (mint) => chain.getAsset(mint),
-      log,
-    });
-    log.info('top-up proposer on', { multisig: multisigAddress, vault: squads.vault });
-    const deps = {
-      store: new PgTopUpStore(db, multisigAddress),
-      squads,
-      policy: {
-        targets: config.TOPUP_TARGETS,
-        maxCards: config.TOPUP_MAX_CARDS,
-        maxUsd: config.TOPUP_MAX_USD,
-        minHotLamports: BigInt(Math.round(config.TOPUP_MIN_HOT_SOL * 1e9)),
-        solTopUpLamports: BigInt(Math.round(config.TOPUP_SOL_AMOUNT * 1e9)),
-      },
-      log,
-    };
+    let deps: Parameters<typeof runTopUpTick>[0] | null = null;
     loops.push(loop('top-up', config.TOPUP_INTERVAL_MS, async () => {
+      if (!deps) {
+        const squads = await createSquadsGateway({
+          rpcUrl: config.SOLANA_RPC_URL,
+          multisigAddress,
+          proposer: Keypair.fromSecretKey(parseSecretKey(config.SQUADS_PROPOSER_SECRET_KEY!, 'SQUADS_PROPOSER_SECRET_KEY')),
+          hotWallet: chain.hotWallet,
+          expectedVault: config.SQUADS_VAULT_ADDRESS,
+          minThreshold: config.SQUADS_MIN_THRESHOLD,
+          allowMainnet: config.LOTUS_ALLOW_MAINNET,
+          getAsset: (mint) => chain.getAsset(mint),
+          log,
+        });
+        log.info('top-up proposer on', { multisig: multisigAddress, vault: squads.vault });
+        deps = {
+          store: new PgTopUpStore(db, multisigAddress),
+          squads,
+          policy: {
+            targets: config.TOPUP_TARGETS,
+            maxCards: config.TOPUP_MAX_CARDS,
+            maxUsd: config.TOPUP_MAX_USD,
+            minHotLamports: BigInt(Math.round(config.TOPUP_MIN_HOT_SOL * 1e9)),
+            solTopUpLamports: BigInt(Math.round(config.TOPUP_SOL_AMOUNT * 1e9)),
+          },
+          log,
+        };
+      }
       const r = await runTopUpTick(deps);
       if (r.kind !== 'idle' || r.skippedByCap) log.info('top-up tick', r);
     }, controller.signal));
@@ -144,24 +150,28 @@ async function main() {
   if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY');
   if ((mode === 'all' || mode === 'fee-claimer') && feesOn) {
     const vault = config.SQUADS_VAULT_ADDRESS!;
-    const gateway = await createPumpFeeGateway({
-      rpcUrl: config.SOLANA_RPC_URL,
-      coinMint: config.PUMP_COIN_MINT!,
-      vault,
-      payer: Keypair.fromSecretKey(parseSecretKey(config.FEE_CLAIMER_SECRET_KEY!, 'FEE_CLAIMER_SECRET_KEY')),
-      allowMainnet: config.LOTUS_ALLOW_MAINNET,
-      priorityFeeMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS,
-    });
-    log.info('fee claimer on', { coin: config.PUMP_COIN_MINT, vault });
-    const deps = {
-      gateway,
-      claims: new PgClaimLog(db),
-      vault,
-      minClaim: BigInt(config.FEE_CLAIM_MIN_BASE_UNITS),
-      minGasLamports: BigInt(Math.round(config.FEE_CLAIMER_MIN_GAS_SOL * 1e9)),
-      log,
-    };
+    let deps: Parameters<typeof runFeeClaimTick>[0] | null = null;
     loops.push(loop('fee-claimer', config.FEE_CLAIM_INTERVAL_MS, async () => {
+      if (!deps) {
+        const gateway = await createPumpFeeGateway({
+          rpcUrl: config.SOLANA_RPC_URL,
+          coinMint: config.PUMP_COIN_MINT!,
+          vault,
+          payer: Keypair.fromSecretKey(parseSecretKey(config.FEE_CLAIMER_SECRET_KEY!, 'FEE_CLAIMER_SECRET_KEY')),
+          allowMainnet: config.LOTUS_ALLOW_MAINNET,
+          priorityFeeMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS,
+        });
+        log.info('fee claimer on', { coin: config.PUMP_COIN_MINT, vault });
+        deps = {
+          gateway,
+          claims: new PgClaimLog(db),
+          vault,
+          minVaultShareBps: config.FEE_MIN_VAULT_SHARE_BPS,
+          minClaim: BigInt(config.FEE_CLAIM_MIN_BASE_UNITS),
+          minGasLamports: BigInt(Math.round(config.FEE_CLAIMER_MIN_GAS_SOL * 1e9)),
+          log,
+        };
+      }
       const r = await runFeeClaimTick(deps);
       if (r.kind !== 'below_minimum') log.info('fee claim tick', r);
     }, controller.signal));

@@ -257,7 +257,7 @@ export class PgTopUpStore implements TopUpStore {
 export class PgClaimLog implements ClaimLog {
   constructor(private readonly db: pg.Pool) {}
 
-  async recordClaim(e: { signature: string; amount: string; asset: string; note: string }): Promise<void> {
+  async recordClaim(e: { signature: string; amount: string | null; asset: string; note: string }): Promise<void> {
     await this.db.query(
       `INSERT INTO treasury_events (kind, amount, asset, tx_signature, note) VALUES ('claim', $1, $2, $3, $4)`,
       [e.amount, e.asset, e.signature, e.note],

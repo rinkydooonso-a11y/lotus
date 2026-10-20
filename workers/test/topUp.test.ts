@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  planTopUp, runTopUpTick, type ChainProposalState, type OpenProposal, type SquadsGateway, type Tier, type TopUpPolicy,
+  NothingSentError, planTopUp, runTopUpTick, type ChainProposalState, type OpenProposal, type SquadsGateway, type Tier, type TopUpPolicy,
   type TopUpStore, type VaultCard,
 } from '../src/topUp.js';
 import { silentLog } from './fakes.js';
@@ -79,9 +79,13 @@ class FakeSquads implements SquadsGateway {
   states = new Map<bigint, ChainProposalState>();
   created: Array<{ index: bigint; mints: string[]; sol: bigint }> = [];
   failCreate = false;
+  failBeforeSend = false;
+  gone = new Set<string>();
   async nextTransactionIndex() { return this.index + 1n; }
+  async notInVault(cards: VaultCard[]) { return cards.filter((c) => this.gone.has(c.id)); }
   async hotWalletLamports() { return this.lamports; }
   async createTopUpProposal(index: bigint, cards: VaultCard[], sol: bigint) {
+    if (this.failBeforeSend) throw new NothingSentError('proposer has no SOL');
     if (this.failCreate) throw new Error('rpc down');
     this.index = index;
     this.created.push({ index, mints: cards.map((c) => c.nftMint), sol });
@@ -150,6 +154,26 @@ describe('top-up tick', () => {
     const r = await runTopUpTick(s.deps);
     expect(s.store.proposals[0]!.status).toBe('abandoned');
     expect(r).toMatchObject({ kind: 'proposed' });
+  });
+
+  it('retires a proposal that failed before any chain write and retries at the same index next tick', async () => {
+    const s = setup();
+    s.store.vault = [card('c1', 'common')];
+    s.squads.failBeforeSend = true;
+    expect(await runTopUpTick(s.deps)).toMatchObject({ kind: 'create_failed', nothingSent: true, transactionIndex: '6' });
+    expect(s.store.proposals[0]!.status).toBe('abandoned');
+
+    s.squads.failBeforeSend = false;
+    expect(await runTopUpTick(s.deps)).toMatchObject({ kind: 'proposed', transactionIndex: '6' });
+    expect(s.squads.created).toEqual([{ index: 6n, mints: ['mint-c1'], sol: 0n }]);
+  });
+
+  it('leaves out a card the vault no longer holds instead of failing the whole top-up', async () => {
+    const s = setup();
+    s.store.vault = [card('c1', 'common'), card('c2', 'common'), card('c3', 'common'), card('c4', 'common')];
+    s.squads.gone.add('c1');
+    expect(await runTopUpTick(s.deps)).toMatchObject({ kind: 'proposed', cards: 3 });
+    expect(s.squads.created[0]!.mints).toEqual(['mint-c2', 'mint-c3', 'mint-c4']);
   });
 
   it('adopts a creating row whose proposal did go live', async () => {

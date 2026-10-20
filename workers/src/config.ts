@@ -34,6 +34,8 @@ const EnvSchema = z.object({
    */
   SQUADS_PROPOSER_SECRET_KEY: z.string().min(1).optional(),
   /** Wanted available cards per tier in the hot wallet, e.g. common:10,uncommon:4,rare:2,grail:1 */
+  /** The worker refuses a multisig whose approval threshold is lower than this. */
+  SQUADS_MIN_THRESHOLD: z.coerce.number().int().min(2).default(2),
   TOPUP_TARGETS: z.string().default('common:10,uncommon:4,rare:2,grail:1'),
   TOPUP_MAX_CARDS: z.coerce.number().int().min(1).max(20).default(10),
   TOPUP_MAX_USD: z.coerce.number().min(0).default(500),
@@ -47,6 +49,8 @@ const EnvSchema = z.object({
   FEE_CLAIM_INTERVAL_MS: z.coerce.number().int().min(600_000).default(3 * 3600_000),
   /** Skip claims smaller than this many base units of the quote asset. */
   FEE_CLAIM_MIN_BASE_UNITS: z.string().regex(/^\d{1,30}$/).default('1'),
+  /** Refuse to claim unless the vault's share of the fees is at least this (10000 = 100%). */
+  FEE_MIN_VAULT_SHARE_BPS: z.coerce.number().int().min(1).max(10_000).default(10_000),
   FEE_CLAIMER_MIN_GAS_SOL: z.coerce.number().min(0).default(0.005),
   PRIZE_SENDER_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
   PRIZE_SENDER_BATCH: z.coerce.number().int().min(1).max(50).default(10),
@@ -98,7 +102,13 @@ export function parseTargets(raw: string): Config['TOPUP_TARGETS'] {
 export function parseSecretKey(raw: string, name = 'HOT_WALLET_SECRET_KEY'): Uint8Array {
   const trimmed = raw.trim();
   if (trimmed.startsWith('[')) {
-    const bytes = z.array(z.number().int().min(0).max(255)).length(64).parse(JSON.parse(trimmed));
+    // JSON.parse and zod both quote the input in their errors; never let a key fragment reach the logs.
+    let bytes: number[];
+    try {
+      bytes = z.array(z.number().int().min(0).max(255)).length(64).parse(JSON.parse(trimmed));
+    } catch {
+      throw new Error(`${name} is not a valid JSON array of 64 bytes`);
+    }
     return Uint8Array.from(bytes);
   }
   return Uint8Array.from(base58Decode(trimmed, name));

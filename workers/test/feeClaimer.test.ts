@@ -13,15 +13,15 @@ class FakeGateway implements FeeGateway {
   async quote() { return { asset: 'CARDSmint', decimals: 6 }; }
   async shareholders() { return this.holders; }
   async gasLamports() { return this.gas; }
-  async vaultBalance() { return this.balance; }
   async simulateVaultGain() { return (this.pending * BigInt(this.holders.find((h) => h.address === VAULT)?.shareBps ?? 0)) / 10_000n; }
-  async sendDistribution() { this.balance += await this.simulateVaultGain(); this.pending = 0n; this.sends++; return 'sig1'; }
+  received: bigint | null | undefined;
+  async sendDistribution() { const gain = await this.simulateVaultGain(); this.balance += gain; this.pending = 0n; this.sends++; return { signature: 'sig1', received: this.received === undefined ? gain : this.received }; }
 }
 
 function setup() {
   const gateway = new FakeGateway();
-  const claims: Array<{ signature: string; amount: string; asset: string; note: string }> = [];
-  const deps = { gateway, claims: { recordClaim: async (e: (typeof claims)[number]) => { claims.push(e); } }, vault: VAULT, minClaim: 1_000_000n, minGasLamports: 5_000_000n, log: silentLog };
+  const claims: Array<{ signature: string; amount: string | null; asset: string; note: string }> = [];
+  const deps = { gateway, claims: { recordClaim: async (e: (typeof claims)[number]) => { claims.push(e); } }, vault: VAULT, minVaultShareBps: 10_000, minClaim: 1_000_000n, minGasLamports: 5_000_000n, log: silentLog };
   return { gateway, claims, deps };
 }
 
@@ -38,6 +38,20 @@ describe('fee claimer', () => {
     s.gateway.holders = [{ address: 'SomeoneElse1111111111111111111111111111111', shareBps: 10_000 }];
     expect(await runFeeClaimTick(s.deps)).toMatchObject({ kind: 'vault_not_shareholder' });
     expect(s.gateway.sends).toBe(0);
+  });
+
+  it('refuses when the vault share is below the minimum', async () => {
+    const s = setup();
+    s.gateway.holders = [{ address: VAULT, shareBps: 1 }, { address: 'SomeoneElse1111111111111111111111111111111', shareBps: 9_999 }];
+    expect(await runFeeClaimTick(s.deps)).toEqual({ kind: 'vault_share_too_low', shareBps: 1 });
+    expect(s.gateway.sends).toBe(0);
+  });
+
+  it('still records a landed claim whose amount could not be read', async () => {
+    const s = setup();
+    s.gateway.received = null;
+    expect(await runFeeClaimTick(s.deps)).toMatchObject({ kind: 'claimed', received: null });
+    expect(s.claims[0]).toMatchObject({ signature: 'sig1', amount: null });
   });
 
   it('skips below the minimum and when gas is low', async () => {

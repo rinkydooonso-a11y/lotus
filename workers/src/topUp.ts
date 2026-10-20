@@ -105,10 +105,16 @@ export interface TopUpStore {
   markExecuted(id: string): Promise<void>;
 }
 
+/** Thrown by createTopUpProposal when it failed before anything reached the chain. */
+export class NothingSentError extends Error {}
+
 export interface SquadsGateway {
+  /** Also re-checks the multisig's safety settings; throws if they no longer hold. */
   nextTransactionIndex(): Promise<bigint>;
+  /** The given cards that the vault does not hold on chain right now. */
+  notInVault(cards: VaultCard[]): Promise<VaultCard[]>;
   hotWalletLamports(): Promise<bigint>;
-  /** Creates the batch, adds one transaction per card (and SOL), then activates the proposal. */
+  /** Creates the batch, adds one transaction per card (and SOL), then activates the proposal. Throws NothingSentError if nothing landed. */
   createTopUpProposal(transactionIndex: bigint, cards: VaultCard[], solLamports: bigint): Promise<void>;
   proposalState(transactionIndex: bigint): Promise<ChainProposalState>;
 }
@@ -127,7 +133,7 @@ export type TopUpOutcome =
   | { kind: 'waiting'; transactionIndex: string; state: ChainProposalState }
   | { kind: 'idle'; skippedByCap: number }
   | { kind: 'proposed'; transactionIndex: string; cards: number; solLamports: string; skippedByCap: number }
-  | { kind: 'create_failed'; transactionIndex: string; error: string };
+  | { kind: 'create_failed'; transactionIndex: string; error: string; nothingSent: boolean };
 
 export async function runTopUpTick(deps: TopUpDeps): Promise<TopUpOutcome> {
   const { store, squads, policy, log } = deps;
@@ -171,7 +177,20 @@ export async function runTopUpTick(deps: TopUpDeps): Promise<TopUpOutcome> {
     store.vaultCandidates(),
     squads.hotWalletLamports(),
   ]);
-  const plan = planTopUp(available, candidates, hotLamports, policy);
+  // Never draft a card the vault doesn't hold: drop it, report it, and plan again without it.
+  const excluded = new Set<string>();
+  let plan = planTopUp(available, candidates, hotLamports, policy);
+  for (let round = 0; round < 3 && plan.cards.length > 0; round++) {
+    const gone = await squads.notInVault(plan.cards);
+    if (gone.length === 0) break;
+    for (const c of gone) excluded.add(c.id);
+    log.warn('vault cards not on chain in the vault; left out of the top-up', { mints: gone.map((c) => c.nftMint) });
+    plan = planTopUp(available, candidates.filter((c) => !excluded.has(c.id)), hotLamports, policy);
+  }
+  if (plan.cards.length > 0 && (await squads.notInVault(plan.cards)).length > 0) {
+    log.warn('vault holdings keep changing; skipping this top-up');
+    return { kind: 'idle', skippedByCap: plan.skippedByCap };
+  }
   if (plan.cards.length === 0 && plan.solLamports === 0n) {
     if (plan.skippedByCap) log.warn('top-up needed but every card exceeds the caps', { skipped: plan.skippedByCap });
     return { kind: 'idle', skippedByCap: plan.skippedByCap };
@@ -183,10 +202,13 @@ export async function runTopUpTick(deps: TopUpDeps): Promise<TopUpOutcome> {
   try {
     await squads.createTopUpProposal(transactionIndex, plan.cards, plan.solLamports);
   } catch (err) {
-    // Left as 'creating': the next ticks wait, then reconcile it against chain state.
     const error = err instanceof Error ? err.message : String(err);
-    log.error('top-up proposal creation failed', { transactionIndex: idx, error });
-    return { kind: 'create_failed', transactionIndex: idx, error };
+    const nothingSent = err instanceof NothingSentError;
+    // Nothing on chain: retire the row now so the next tick can retry. Otherwise it stays 'creating'
+    // and later ticks reconcile it against chain state.
+    if (nothingSent) await store.setStatus(id, 'abandoned', `nothing sent: ${error}`);
+    log.error('top-up proposal creation failed', { transactionIndex: idx, error, nothingSent });
+    return { kind: 'create_failed', transactionIndex: idx, error, nothingSent };
   }
   await store.setStatus(id, 'active');
   log.info('top-up proposed, waiting on signers', {

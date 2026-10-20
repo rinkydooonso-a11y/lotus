@@ -20,22 +20,26 @@ export interface FeeGateway {
   quote(): Promise<{ asset: string; decimals: number }>;
   shareholders(): Promise<Shareholder[]>;
   gasLamports(): Promise<bigint>;
-  /** The vault's balance of the quote asset, in base units. */
-  vaultBalance(): Promise<bigint>;
   /** Simulates the distribution; how much the vault would receive, in base units. */
   simulateVaultGain(): Promise<bigint>;
-  sendDistribution(): Promise<string>;
+  /**
+   * Sends and confirms the distribution. `received` is the vault's change read from the landed
+   * transaction itself (null if the node can't return it yet), so other vault traffic can't skew it.
+   */
+  sendDistribution(): Promise<{ signature: string; received: bigint | null }>;
 }
 
 export interface ClaimLog {
-  /** `amount` is a decimal string in whole units, exact (no float rounding). */
-  recordClaim(e: { signature: string; amount: string; asset: string; note: string }): Promise<void>;
+  /** `amount` is a decimal string in whole units, exact (no float rounding); null if unknown. */
+  recordClaim(e: { signature: string; amount: string | null; asset: string; note: string }): Promise<void>;
 }
 
 export interface FeeClaimDeps {
   gateway: FeeGateway;
   claims: ClaimLog;
   vault: string;
+  /** Refuse unless the vault's share is at least this many basis points. */
+  minVaultShareBps: number;
   /** Skip claims that would bring the vault less than this, in base units of the quote. */
   minClaim: bigint;
   minGasLamports: bigint;
@@ -44,9 +48,10 @@ export interface FeeClaimDeps {
 
 export type FeeClaimOutcome =
   | { kind: 'vault_not_shareholder'; shareholders: Shareholder[] }
+  | { kind: 'vault_share_too_low'; shareBps: number }
   | { kind: 'gas_low'; lamports: string }
   | { kind: 'below_minimum'; gain: string }
-  | { kind: 'claimed'; signature: string; received: string; asset: string };
+  | { kind: 'claimed'; signature: string; received: string | null; asset: string };
 
 export function toDecimal(baseUnits: bigint, decimals: number): string {
   const s = baseUnits.toString().padStart(decimals + 1, '0');
@@ -62,6 +67,11 @@ export async function runFeeClaimTick(deps: FeeClaimDeps): Promise<FeeClaimOutco
     log.error('Squads vault is not a fee shareholder; not claiming', { vault: deps.vault, shareholders });
     return { kind: 'vault_not_shareholder', shareholders };
   }
+  if (mine.shareBps < deps.minVaultShareBps) {
+    // Every distribution also pays the other shareholders; don't spend gas sending most of it elsewhere.
+    log.error('Squads vault share is below the minimum; not claiming', { shareBps: mine.shareBps, min: deps.minVaultShareBps, shareholders });
+    return { kind: 'vault_share_too_low', shareBps: mine.shareBps };
+  }
 
   const gas = await gateway.gasLamports();
   if (gas < deps.minGasLamports) {
@@ -73,17 +83,13 @@ export async function runFeeClaimTick(deps: FeeClaimDeps): Promise<FeeClaimOutco
   if (gain < deps.minClaim) return { kind: 'below_minimum', gain: gain.toString() };
 
   const { asset, decimals } = await gateway.quote();
-  const before = await gateway.vaultBalance();
-  const signature = await gateway.sendDistribution();
-  const after = await gateway.vaultBalance();
-  // Measured, not simulated: what actually landed (other inflows in the same window would count too).
-  const received = after > before ? after - before : 0n;
+  const { signature, received } = await gateway.sendDistribution();
   await deps.claims.recordClaim({
     signature,
-    amount: toDecimal(received, decimals),
+    amount: received === null ? null : toDecimal(received, decimals),
     asset,
-    note: `pump.fun creator fees, vault share ${mine.shareBps / 100}%`,
+    note: `pump.fun creator fees, vault share ${mine.shareBps / 100}%${received === null ? ' (amount not read, see tx)' : ''}`,
   });
-  log.info('creator fees claimed into the vault', { signature, received: received.toString(), asset });
-  return { kind: 'claimed', signature, received: received.toString(), asset };
+  log.info('creator fees claimed into the vault', { signature, received: received?.toString() ?? null, asset });
+  return { kind: 'claimed', signature, received: received?.toString() ?? null, asset };
 }

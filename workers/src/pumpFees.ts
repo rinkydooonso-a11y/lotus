@@ -50,7 +50,7 @@ export async function createPumpFeeGateway(cfg: PumpFeesConfig): Promise<FeeGate
   const balanceOf = (data: Buffer | null, lamports: number): bigint =>
     native ? BigInt(lamports) : data && data.length >= AccountLayout.span ? AccountLayout.decode(data).amount : 0n;
 
-  const buildTx = async (): Promise<VersionedTransaction> => {
+  const buildTx = async (): Promise<{ tx: VersionedTransaction; blockhash: string; lastValidBlockHeight: number }> => {
     const { instructions } = await sdk.buildDistributeCreatorFeesInstructions(mint, {
       quoteMint,
       quoteTokenProgram,
@@ -61,12 +61,31 @@ export async function createPumpFeeGateway(cfg: PumpFeesConfig): Promise<FeeGate
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: cfg.priorityFeeMicroLamports }),
       ...instructions,
     ];
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     const tx = new VersionedTransaction(
       new TransactionMessage({ payerKey: cfg.payer.publicKey, recentBlockhash: blockhash, instructions: ixs }).compileToV0Message(),
     );
     tx.sign([cfg.payer]);
-    return tx;
+    return { tx, blockhash, lastValidBlockHeight };
+  };
+
+  /** The vault's change in the landed transaction, from its own pre/post balances. */
+  const receivedIn = async (signature: string): Promise<bigint | null> => {
+    for (let i = 0; i < 5; i++) {
+      const t = await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+      if (t?.meta) {
+        const keys = t.transaction.message.getAccountKeys({ accountKeysFromLookups: t.meta.loadedAddresses }).staticAccountKeys
+          .concat(t.meta.loadedAddresses?.writable ?? [], t.meta.loadedAddresses?.readonly ?? []);
+        const idx = keys.findIndex((k) => k.equals(watched));
+        if (idx < 0) return 0n;
+        if (native) return BigInt(t.meta.postBalances[idx]! - t.meta.preBalances[idx]!);
+        const amt = (list: typeof t.meta.preTokenBalances) =>
+          BigInt(list?.find((b) => b.accountIndex === idx)?.uiTokenAmount.amount ?? '0');
+        return amt(t.meta.postTokenBalances) - amt(t.meta.preTokenBalances);
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return null;
   };
 
   const vaultBalance = async (): Promise<bigint> => {
@@ -89,10 +108,9 @@ export async function createPumpFeeGateway(cfg: PumpFeesConfig): Promise<FeeGate
     async gasLamports() {
       return BigInt(await connection.getBalance(cfg.payer.publicKey, 'confirmed'));
     },
-    vaultBalance,
     async simulateVaultGain() {
       const before = await vaultBalance();
-      const sim = await connection.simulateTransaction(await buildTx(), {
+      const sim = await connection.simulateTransaction((await buildTx()).tx, {
         commitment: 'confirmed',
         accounts: { encoding: 'base64', addresses: [watched.toBase58()] },
       });
@@ -102,12 +120,19 @@ export async function createPumpFeeGateway(cfg: PumpFeesConfig): Promise<FeeGate
       return after > before ? after - before : 0n;
     },
     async sendDistribution() {
-      const tx = await buildTx();
+      const { tx, blockhash, lastValidBlockHeight } = await buildTx();
       const signature = await connection.sendTransaction(tx, { maxRetries: 3 });
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-      const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-      if (res.value.err) throw new Error(`distribution ${signature} failed: ${JSON.stringify(res.value.err)}`);
-      return signature;
+      try {
+        // Confirm against the blockhash the transaction was signed with, so expiry is judged correctly.
+        const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+        if (res.value.err) throw new Error(`distribution ${signature} failed: ${JSON.stringify(res.value.err)}`);
+      } catch (err) {
+        // A confirm timeout doesn't mean it failed: if it landed cleanly, still record it.
+        const { value: [status] } = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true });
+        const landed = status && !status.err && (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized');
+        if (!landed) throw err;
+      }
+      return { signature, received: await receivedIn(signature) };
     },
   };
 }

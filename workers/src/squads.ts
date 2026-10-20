@@ -15,7 +15,7 @@ import { toWeb3JsInstruction } from '@metaplex-foundation/umi-web3js-adapters';
 import { mplTokenMetadata, transferV1 as tmTransferV1, TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 import { mplCore, transferV1 as coreTransferV1 } from '@metaplex-foundation/mpl-core';
 import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH } from './config.js';
-import type { ChainProposalState, SquadsGateway, VaultCard } from './topUp.js';
+import { NothingSentError, type ChainProposalState, type SquadsGateway, type VaultCard } from './topUp.js';
 import type { AssetInfo, Logger } from './types.js';
 
 const { Permission } = multisig.types;
@@ -28,15 +28,33 @@ export interface SquadsConfig {
   hotWallet: string;
   /** If set, must equal the multisig's vault 0. Guards against a mistyped multisig address. */
   expectedVault?: string;
+  /** Refuse a multisig whose approval threshold is below this. */
+  minThreshold: number;
   allowMainnet: string | undefined;
   getAsset: (mint: string) => Promise<AssetInfo | null>;
   log: Logger;
 }
 
 /**
- * Talks to a Squads v4 multisig as an Initiate-only member. Refuses to start if the proposer can
- * vote or execute, because then a leaked worker key could move funds without the signers.
+ * The guarantees the design rests on: signers approve every move out of the safe. Refuses a
+ * multisig with a config authority (one key could rewrite members and threshold without votes),
+ * a threshold below the minimum, or a proposer that can vote or execute.
  */
+function assertSafeMultisig(ms: multisig.accounts.Multisig, proposer: PublicKey, minThreshold: number): void {
+  if (!ms.configAuthority.equals(PublicKey.default)) {
+    throw new Error(`multisig has config authority ${ms.configAuthority.toBase58()}; use an autonomous multisig (no config authority)`);
+  }
+  if (ms.threshold < minThreshold) throw new Error(`multisig threshold ${ms.threshold} is below the required ${minThreshold}`);
+  const me = ms.members.find((m) => m.key.equals(proposer));
+  if (!me) throw new Error(`proposer ${proposer.toBase58()} is not a member of the multisig`);
+  const has = (p: multisig.types.Permission) => multisig.types.Permissions.has(me.permissions, p);
+  if (!has(Permission.Initiate)) throw new Error('proposer lacks the Initiate permission');
+  if (has(Permission.Vote) || has(Permission.Execute)) {
+    throw new Error('proposer can vote or execute; give it Initiate only so it can never move funds alone');
+  }
+}
+
+/** Talks to a Squads v4 multisig as an Initiate-only member, after checking the multisig is safe. */
 export async function createSquadsGateway(cfg: SquadsConfig): Promise<SquadsGateway & { vault: string }> {
   const connection = new Connection(cfg.rpcUrl, 'confirmed');
   const genesis = await connection.getGenesisHash();
@@ -49,13 +67,7 @@ export async function createSquadsGateway(cfg: SquadsConfig): Promise<SquadsGate
     throw new Error(`SQUADS_VAULT_ADDRESS ${cfg.expectedVault} is not vault 0 of multisig ${cfg.multisigAddress}`);
   }
   const ms = await multisig.accounts.Multisig.fromAccountAddress(connection, multisigPda);
-  const me = ms.members.find((m) => m.key.equals(cfg.proposer.publicKey));
-  if (!me) throw new Error(`proposer ${cfg.proposer.publicKey.toBase58()} is not a member of the multisig`);
-  const has = (p: multisig.types.Permission) => multisig.types.Permissions.has(me.permissions, p);
-  if (!has(Permission.Initiate)) throw new Error('proposer lacks the Initiate permission');
-  if (has(Permission.Vote) || has(Permission.Execute)) {
-    throw new Error('proposer can vote or execute; give it Initiate only so it can never move funds alone');
-  }
+  assertSafeMultisig(ms, cfg.proposer.publicKey, cfg.minThreshold);
 
   const umi = createUmi(cfg.rpcUrl, { commitment: 'confirmed' }).use(mplTokenMetadata()).use(mplCore());
   return new SquadsTopUps(connection, umi, multisigPda, vaultPda, cfg);
@@ -74,9 +86,20 @@ class SquadsTopUps implements SquadsGateway {
     this.vault = vaultPda.toBase58();
   }
 
+  /** Re-checks the multisig every time, so a later config change stops the bot instead of being tolerated. */
   async nextTransactionIndex(): Promise<bigint> {
     const ms = await multisig.accounts.Multisig.fromAccountAddress(this.connection, this.multisigPda);
+    assertSafeMultisig(ms, this.cfg.proposer.publicKey, this.cfg.minThreshold);
     return BigInt(ms.transactionIndex.toString()) + 1n;
+  }
+
+  async notInVault(cards: VaultCard[]): Promise<VaultCard[]> {
+    const out: VaultCard[] = [];
+    for (const c of cards) {
+      const asset = await this.cfg.getAsset(c.nftMint);
+      if (!asset || asset.owner !== this.vault) out.push(c);
+    }
+    return out;
   }
 
   async hotWalletLamports(): Promise<bigint> {
@@ -128,24 +151,38 @@ class SquadsTopUps implements SquadsGateway {
   async createTopUpProposal(transactionIndex: bigint, cards: VaultCard[], solLamports: bigint): Promise<void> {
     // Build every inner message first, so a bad card fails before anything lands on chain.
     const inner: TransactionInstruction[][] = [];
-    for (const c of cards) inner.push(await this.cardTransfer(c));
-    if (solLamports > 0n) {
-      inner.push([
-        SystemProgram.transfer({ fromPubkey: this.vaultPda, toPubkey: new PublicKey(this.cfg.hotWallet), lamports: solLamports }),
-      ]);
+    let blockhash: string;
+    try {
+      for (const c of cards) inner.push(await this.cardTransfer(c));
+      if (solLamports > 0n) {
+        inner.push([
+          SystemProgram.transfer({ fromPubkey: this.vaultPda, toPubkey: new PublicKey(this.cfg.hotWallet), lamports: solLamports }),
+        ]);
+      }
+      if (inner.length === 0) throw new Error('nothing to propose');
+      ({ blockhash } = await this.connection.getLatestBlockhash('confirmed'));
+    } catch (err) {
+      throw new NothingSentError(err instanceof Error ? err.message : String(err));
     }
-    if (inner.length === 0) throw new Error('nothing to propose');
 
-    const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
     const member = this.cfg.proposer.publicKey;
     const base = { multisigPda: this.multisigPda, programId: undefined };
-    await this.send(
+    const createIxs = [
       multisig.instructions.batchCreate({
         ...base, creator: member, batchIndex: transactionIndex, vaultIndex: 0,
         memo: `CardQuest hot-wallet top-up: ${cards.length} card(s)${solLamports > 0n ? ' + SOL' : ''}`,
       }),
       multisig.instructions.proposalCreate({ ...base, creator: member, transactionIndex, isDraft: true }),
-    );
+    ];
+    try {
+      await this.send(...createIxs);
+    } catch (err) {
+      // The first send may still have landed (e.g. a confirm timeout); only a clean "no batch" is nothing sent.
+      if ((await this.proposalState(transactionIndex)) === 'missing') {
+        throw new NothingSentError(err instanceof Error ? err.message : String(err));
+      }
+      throw err;
+    }
     for (const [i, instructions] of inner.entries()) {
       await this.send(
         multisig.instructions.batchAddTransaction({
@@ -171,8 +208,10 @@ class SquadsTopUps implements SquadsGateway {
     if (kind === 'Rejected') return 'rejected';
     if (kind === 'Cancelled') return 'cancelled';
     if (kind === 'Executing') return 'executing';
+    // Squads still executes an Approved proposal after it goes stale, so only Draft/Active can be stale.
+    if (kind === 'Approved') return 'approved';
     const ms = await multisig.accounts.Multisig.fromAccountAddress(this.connection, this.multisigPda);
     if (transactionIndex <= BigInt(ms.staleTransactionIndex.toString())) return 'stale';
-    return kind === 'Draft' ? 'draft' : kind === 'Approved' ? 'approved' : 'active';
+    return kind === 'Draft' ? 'draft' : 'active';
   }
 }
