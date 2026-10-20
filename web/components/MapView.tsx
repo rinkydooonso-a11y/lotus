@@ -149,8 +149,21 @@ export default function MapView() {
           <button className="btn" onClick={() => setConnect(true)}>Connect wallet to play</button>
         </div>
       )}
-      {user && geoErr && <div className="cta"><p>{geoErr}</p></div>}
-      {user && !geoErr && !fix && <div className="cta"><p className="muted">Finding you…</p></div>}
+      {user && geoErr && !(user.isAdmin && !fix) && <div className="cta"><p>{geoErr}</p></div>}
+      {user && !fix && (
+        <div className="cta">
+          {!geoErr && <p className="muted">Finding you…</p>}
+          {user.isAdmin && (
+            <button className="btn" onClick={() => {
+              // Admin-only testing aid for in-app wallet browsers that never answer the location prompt.
+              // The server still applies its normal anti-cheat checks to whatever position is sent.
+              const v = window.prompt("Test location as lat,lng", "40.0821,-74.2097");
+              const [lat, lng] = (v ?? "").split(",").map((x) => Number(x.trim()));
+              if (Number.isFinite(lat) && Number.isFinite(lng)) setFix({ lat, lng, acc: 10 });
+            }}>Use test location (admin)</button>
+          )}
+        </div>
+      )}
       {user && fix && crates.length === 0 && !target && <div className="toast">Looking for crates nearby…</div>}
 
       {target && (
