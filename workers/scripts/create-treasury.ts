@@ -2,12 +2,12 @@
  * Creates the treasury's Squads v4 multisig. Dry run by default: it prints what it would create
  * and what it costs, and sends nothing until you add --send.
  *
- *   cd workers && SOLANA_RPC_URL=... TREASURY_SIGNERS=addr1,addr2,addr3 TREASURY_THRESHOLD=2 \
+ *   cd workers && TREASURY_NETWORK=mainnet SOLANA_RPC_URL=... TREASURY_SIGNERS=addr1,addr2,addr3 TREASURY_THRESHOLD=2 \
  *     PROPOSER_ADDRESS=... PAYER_KEYPAIR=~/.config/lotus/proposer.json npx tsx scripts/create-treasury.ts [--send]
  *
  * The multisig gets the given signers with full permissions, the proposer bot with Initiate only,
  * no config authority (membership and threshold can only change by a signer vote), and no time
- * lock. PAYER_KEYPAIR is a path to a solana-keygen JSON file and only pays rent and the Squads fee;
+ * lock. TREASURY_NETWORK (mainnet or devnet) must match the RPC's network. PAYER_KEYPAIR is a path to a solana-keygen JSON file and only pays rent and the Squads fee;
  * it gets no say in the multisig unless it is also a signer. On mainnet --send also needs
  * LOTUS_ALLOW_MAINNET=yes-send-real-prizes-on-mainnet.
  */
@@ -19,6 +19,10 @@ import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH, parseSecretKey } fro
 import { assertSafeMultisig } from '../src/squads.js';
 
 const { Permission, Permissions } = multisig.types;
+const GENESIS: Record<string, string> = { mainnet: MAINNET_GENESIS_HASH, devnet: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG' };
+
+/** Set once a create may have reached the chain, so any later error repeats where to look. */
+let sentAddress: string | null = null;
 
 function need(name: string): string {
   const v = process.env[name]?.trim();
@@ -28,8 +32,14 @@ function need(name: string): string {
 
 async function main() {
   const send = process.argv.includes('--send');
-  const connection = new Connection(need('SOLANA_RPC_URL'), 'confirmed');
-  const mainnet = (await connection.getGenesisHash()) === MAINNET_GENESIS_HASH;
+  const network = need('TREASURY_NETWORK');
+  if (!GENESIS[network]) throw new Error('TREASURY_NETWORK must be mainnet or devnet');
+  const rpcUrl = need('SOLANA_RPC_URL');
+  const connection = new Connection(rpcUrl, 'confirmed');
+  if ((await connection.getGenesisHash()) !== GENESIS[network]) {
+    throw new Error(`SOLANA_RPC_URL (${new URL(rpcUrl).host}) is not ${network}; refusing`);
+  }
+  const mainnet = network === 'mainnet';
   if (send && mainnet && process.env.LOTUS_ALLOW_MAINNET !== MAINNET_CONFIRMATION_PHRASE) {
     throw new Error(`Refusing to send on mainnet without LOTUS_ALLOW_MAINNET=${MAINNET_CONFIRMATION_PHRASE}.`);
   }
@@ -39,6 +49,9 @@ async function main() {
   const proposer = new PublicKey(need('PROPOSER_ADDRESS'));
   const unique = new Set(signers.map((s) => s.toBase58()));
   if (unique.size !== signers.length) throw new Error('TREASURY_SIGNERS has a duplicate');
+  // A PDA (e.g. someone's Squads vault) is a valid address but can never sign.
+  const offCurve = signers.filter((s) => !PublicKey.isOnCurve(s.toBytes()));
+  if (offCurve.length) throw new Error(`not wallet addresses (can never sign): ${offCurve.map((s) => s.toBase58()).join(', ')}`);
   if (unique.has(proposer.toBase58())) throw new Error('the proposer bot must not also be a signer');
   if (!Number.isInteger(threshold) || threshold < 2 || threshold > signers.length) {
     throw new Error(`TREASURY_THRESHOLD must be between 2 and ${signers.length}`);
@@ -54,9 +67,13 @@ async function main() {
   const balance = await connection.getBalance(payer.publicKey, 'confirmed');
 
   console.log(JSON.stringify({
-    network: mainnet ? 'mainnet' : 'not mainnet',
+    network,
+    rpcHost: new URL(rpcUrl).host,
     signers: signers.map((s) => s.toBase58()),
     threshold: `${threshold} of ${signers.length}`,
+    recovery: threshold === signers.length
+      ? 'NONE: losing any one signer key locks the safe forever'
+      : `still opens if up to ${signers.length - threshold} signer key(s) are lost`,
     proposer: `${proposer.toBase58()} (Initiate only)`,
     payer: payer.publicKey.toBase58(),
     payerSol: balance / LAMPORTS_PER_SOL,
@@ -70,6 +87,8 @@ async function main() {
     return;
   }
 
+  console.log(`creating ${multisigPda.toBase58()}. If this errors, check that address on an explorer before re-running: a re-run creates a second safe.`);
+  sentAddress = multisigPda.toBase58();
   const sig = await multisig.rpc.multisigCreateV2({
     connection, treasury: programConfig.treasury, createKey, creator: payer, multisigPda,
     configAuthority: null, threshold, timeLock: 0, rentCollector: null,
@@ -81,11 +100,19 @@ async function main() {
   });
   await connection.confirmTransaction(sig, 'confirmed');
   const ms = await multisig.accounts.Multisig.fromAccountAddress(connection, multisigPda, 'confirmed');
-  assertSafeMultisig(ms, proposer, 2);
+  assertSafeMultisig(ms, proposer, threshold);
+  // Belt and braces: the account is exactly what was asked for.
+  const members = new Map(ms.members.map((m) => [m.key.toBase58(), m.permissions]));
+  const full = [Permission.Initiate, Permission.Vote, Permission.Execute];
+  const exact = ms.threshold === threshold && ms.timeLock === 0 && members.size === signers.length + 1
+    && members.has(proposer.toBase58())
+    && signers.every((s) => { const p = members.get(s.toBase58()); return p && full.every((f) => Permissions.has(p, f)); });
+  if (!exact) throw new Error(`multisig ${multisigPda.toBase58()} does not match what was requested; do not use it`);
   console.log(JSON.stringify({ created: sig, SQUADS_MULTISIG_ADDRESS: multisigPda.toBase58(), SQUADS_VAULT_ADDRESS: vaultPda.toBase58() }, null, 2));
 }
 
 main().catch((err) => {
   console.error(err instanceof Error ? err.message : err);
+  if (sentAddress) console.error(`A safe may already exist at ${sentAddress}. Check it on an explorer before re-running.`);
   process.exit(1);
 });
