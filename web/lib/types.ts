@@ -17,6 +17,8 @@ export interface LocationPing {
   deviceId: string;
   /** Set by route handlers from request headers, never from the client body. */
   ip?: string | null;
+  /** Set by route handlers for admins only (skips the launch-city gate), never from the client body. */
+  anywhere?: boolean;
 }
 
 export type OpenResult =

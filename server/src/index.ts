@@ -4,6 +4,7 @@ export { GAME, tierForValue } from './config';
 export { getPool, withTx } from './db';
 export { pgSsl } from './pgSsl';
 export { upsertPlayerByWallet, getPlayer, recordLocationPing } from './players';
+export { SERVICE_CITIES, cityFor } from './cities';
 export { spawnCratesNear, getActiveCrates, expireStaleCrates } from './crates';
 export { openCrate, type OpenCrateDeps } from './openCrate';
 export { useTicket } from './tickets';
