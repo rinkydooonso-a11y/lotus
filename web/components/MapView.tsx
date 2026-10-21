@@ -10,6 +10,7 @@ import type { Balances, Crate, OpenResult } from "@/lib/types";
 import { setExploring, useExploring, useFullMap, usePhone } from "@/lib/viewStore";
 import { ResultModal } from "./ResultModal";
 import { SHARDS_PER_TICKET } from "@/lib/rules";
+import { LINKS } from "@/lib/links";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconClose, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
@@ -298,6 +299,10 @@ export default function MapView() {
   // UI hint only; the server re-checks distance and decides.
   const near = dist !== null && dist <= OPEN_RADIUS_M;
   const canOpen = balances?.opensLeft !== 0;
+  // UI hint only; the server re-reads the chain and decides. Shown up front so nobody walks to a
+  // crate they can't open yet.
+  const hold = balances?.coinHold;
+  const needsCoin = hold?.gate === "on" && !hold.qualified;
   const reach = dist === null ? 0 : near ? 1 : Math.max(0.06, Math.min(1, OPEN_RADIUS_M / dist));
 
   const open = async () => {
@@ -384,17 +389,23 @@ export default function MapView() {
             </div>
             <div className="grow">
               <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
-              <p className={near && canOpen ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : near ? (canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`) : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</p>
+              <p className={near && canOpen && !needsCoin ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : !near ? `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m` : needsCoin && hold?.gate === "on" ? (hold.lockedOut ? `Your coin balance dropped below $${hold.requiredUsd}. Opening resumes when this window ends.` : `Hold $${hold.requiredUsd} of ${LINKS.ticker} to open crates.`) : canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`}</p>
             </div>
             <button className="icon-btn" onClick={() => setSel(null)} aria-label="Close"><IconClose size={16} /></button>
           </div>
-          <button className={near && canOpen ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening || !canOpen} onClick={() => void open()}>
-            {opening ? "Opening…"
-              : !near ? "Walk closer"
-              : !canOpen ? "Come back tomorrow"
-              : balances?.nextOpenCostsTicket ? <><Ticket size={18} />Open with a ticket</>
-              : "Open crate"}
-          </button>
+          {near && needsCoin && hold?.gate === "on" && !hold.lockedOut ? (
+            // Nothing to tap for an open here, so the button becomes the way to fix it.
+            <a className="btn btn-lg wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}</a>
+          ) : (
+            <button className={near && canOpen && !needsCoin ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening || !canOpen || needsCoin} onClick={() => void open()}>
+              {opening ? "Opening…"
+                : !near ? "Walk closer"
+                : needsCoin ? "Opening paused"
+                : !canOpen ? "Come back tomorrow"
+                : balances?.nextOpenCostsTicket ? <><Ticket size={18} />Open with a ticket</>
+                : "Open crate"}
+            </button>
+          )}
         </div>
       )}
       {result && <ResultModal result={result} onClose={() => setResult(null)} shardsPerTicket={balances?.shardsPerTicket ?? SHARDS_PER_TICKET} />}

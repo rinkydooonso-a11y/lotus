@@ -4,6 +4,7 @@ import { TIER_LABEL, usd } from "@/lib/format";
 import { CardThumb } from "./CardThumb";
 import { Sheet } from "./Sheet";
 import { IconAlert, Shard, Ticket } from "./Icons";
+import { LINKS } from "@/lib/links";
 
 const REJECT_TEXT: Record<string, string> = {
   too_far: "You're too far from this crate. Walk closer.",
@@ -46,8 +47,12 @@ export function ResultModal({ result, onClose, shardsPerTicket }: { result: Open
       {result.kind === "rejected" && (
         <>
           <div className="reveal-icon"><IconAlert size={30} /></div>
-          <h2>Couldn&apos;t open</h2>
+          <h2>{result.code === "needs_coin" || result.code === "hold_locked" ? "You need the coin held" : "Couldn't open"}</h2>
+          {/* The server's message carries the live numbers (how much to hold, how much short). */}
           <p className="reveal-note">{REJECT_TEXT[result.code] ?? result.message}</p>
+          {result.code === "needs_coin" && (
+            <a className="btn wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get the coin</a>
+          )}
         </>
       )}
       <button className={result.kind === "rejected" ? "btn btn-lg btn-gray wide" : "btn btn-lg wide"} onClick={onClose}>{result.kind === "rejected" ? "OK" : result.kind === "card" ? "Keep hunting" : "Nice"}</button>

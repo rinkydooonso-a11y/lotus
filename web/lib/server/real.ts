@@ -42,7 +42,10 @@ export const realServer: GameServer = {
     return { kind: "shards", shards: r.shardsAwarded, ticketsGained: r.ticketsAwarded, shardsTotal: r.shards, ticketsTotal: r.tickets };
   },
   async balances(playerId) {
-    const [pl, a] = await Promise.all([srv.getPlayer(playerId), srv.getAllowance(playerId)]);
+    // The hold status is a single indexed read of the player's own window: no RPC, no price feed.
+    const [pl, a, hold] = await Promise.all([
+      srv.getPlayer(playerId), srv.getAllowance(playerId), srv.getCoinHoldStatus(playerId),
+    ]);
     return {
       shards: pl?.shards ?? 0,
       tickets: a.tickets,
@@ -51,6 +54,7 @@ export const realServer: GameServer = {
       opensLeft: a.opensLeft,
       freeOpensPerDay: a.freeOpensPerDay,
       shardsPerTicket: a.shardsPerTicket,
+      coinHold: hold,
     };
   },
   async history(playerId) {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { GAME } from './config';
 import { getPool, UTC_DAY, withTx } from './db';
+import { checkCoinHold, type HoldDeps } from './holding';
 import {
   availableByTier,
   claimBudgetSlot,
@@ -24,6 +25,11 @@ export interface OpenCrateDeps {
   rng?: Rng;
   /** Tests only: override the day's prize budget ceilings. */
   budget?: BudgetCaps;
+  /**
+   * Coin holder gate. Left out, it reads its own configuration and is off until COIN_MINT is set.
+   * Tests pass a config and stub lookups; `{ config: null }` forces it off.
+   */
+  hold?: HoldDeps;
 }
 
 interface CrateRow {
@@ -125,6 +131,9 @@ async function replay(db: Pool | PoolClient, crateId: string, playerId: string):
  *  - Never award what we can't pay. A card is reserved with FOR UPDATE SKIP LOCKED and booked
  *    against the day's prize budget in the same transaction as the opening. If either fails the
  *    result downgrades to shards.
+ *
+ * The coin holder gate runs before the transaction, since it makes network calls. It is off until
+ * COIN_MINT is set, and refuses the open when it can't read the chain or the price (holding.ts).
  */
 export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Promise<OpenCrateResult> {
   const parsed = OpenCrateInputSchema.safeParse(input);
@@ -155,7 +164,15 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
     return reject('too_far', `You are ${Math.round(crate.distance_m)} m away; get within ${GAME.openRadiusM} m`);
   }
 
-  // 3. Anti-cheat hook. Throws propagate: fail closed.
+  // 3. Coin holder gate. Before anti-cheat on purpose: anti-cheat reserves a cooldown, and somebody
+  // who simply hasn't bought the coin yet shouldn't burn one. Off entirely until COIN_MINT is set.
+  const holding = await checkCoinHold(
+    { playerId: inp.playerId, walletAddress: inp.walletAddress },
+    { db, ...deps.hold },
+  );
+  if (!holding.ok) return reject(holding.code, holding.message);
+
+  // 4. Anti-cheat hook. Throws propagate: fail closed.
   const verdict = await deps.validateOpen({
     db,
     now: new Date(),
@@ -193,7 +210,7 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
     }
   };
 
-  // 4. The atomic part.
+  // 5. The atomic part.
   const result = await withTx(db, async (c): Promise<OpenCrateResult | 'raced'> => {
     const p = await c.query<{ status: string; shards: number; tickets: number }>(
       'SELECT status, shards, tickets FROM players WHERE id = $1 FOR UPDATE',
@@ -212,7 +229,7 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
     );
     if (!near.rows[0]?.ok) return reject('too_far', `Get within ${GAME.openRadiusM} m`);
 
-    // 5. Daily allowance. The first GAME.freeOpensPerDay opens of the UTC day are free; every
+    // 6. Daily allowance. The first GAME.freeOpensPerDay opens of the UTC day are free; every
     // further open that day spends a ticket and rolls on the better 'ticket' odds. Both claims are
     // conditional writes, so two simultaneous opens can't both take the last free one or the last
     // ticket. Returning a rejection here writes nothing: neither statement changes a row when its
@@ -257,7 +274,7 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
       );
     }
 
-    // 6. The roll. Card tiers the vault can't cover, or that the day's budget can't pay for, are
+    // 7. The roll. Card tiers the vault can't cover, or that the day's budget can't pay for, are
     // zeroed before the draw, so the published odds never promise what can't be delivered.
     const budget = await dailyBudget(c, deps.budget);
     const [base, available] = await Promise.all([loadOdds(rollKind, c), availableByTier(c)]);

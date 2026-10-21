@@ -56,6 +56,10 @@ Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–30
 - Daily prize budget: `maxCardValueUsdPerDay` (400) and `maxCardsPerDay` (25). A card is booked against
   `prize_budget_days` in the open transaction, so the day's ceiling is exact under concurrent wins. Past
   either ceiling the card tiers roll 0 and opens pay shards; `getPublicOdds` shows that.
+- Coin holder gate: a wallet must hold `LOTUS_HOLD_REQUIRED_USD` (25) of `COIN_MINT` to open. Off entirely
+  while no coin address (`COIN_MINT` or `NEXT_PUBLIC_COIN_ADDRESS`) is set. A pass opens a 48 h window in `holder_windows` with the
+  token amount snapshotted; dropping below it inside the window pauses opens until the window ends. Reject
+  codes: `needs_coin`, `hold_locked`, `coin_unavailable` (lookup failed, nothing spent).
 - Open radius 40 m, checked in SQL with `ST_DWithin` inside the open transaction.
 - Odds: roll `crypto.randomInt(0, 1_000_000)` against `odds_config` for the crate kind. A tier with zero
   available inventory gets weight 0 (its weight flows to shards), and if the reservation still finds nothing

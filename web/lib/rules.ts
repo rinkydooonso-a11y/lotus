@@ -11,3 +11,5 @@ export const MAX_TICKETS = 5;
 /** Chance a street crate pays a card. See db/migrations/0008 and docs/odds.md. */
 export const CARD_RATE = 0.01;
 export const TICKET_CARD_RATE = 0.05;
+/** USD of the coin a wallet must hold to open a crate. Mirrors LOTUS_HOLD_REQUIRED_USD. */
+export const COIN_HOLD_USD = 25;

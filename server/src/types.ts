@@ -38,6 +38,27 @@ export interface PlayerAllowance {
   shardsPerTicket: number;
 }
 
+// Coin holder gate ------------------------------------------------------------
+
+export type HoldVerdict =
+  | { ok: true; gate: 'off' | 'on' }
+  | { ok: false; code: 'needs_coin' | 'hold_locked' | 'coin_unavailable'; message: string };
+
+/** What the UI shows about the coin requirement. `gate: 'off'` means there is no requirement yet. */
+export type CoinHoldStatus =
+  | { gate: 'off' }
+  | {
+      gate: 'on';
+      /** True while a qualifying window is open and not locked out. */
+      qualified: boolean;
+      requiredUsd: number;
+      /** Coin amount snapshotted for this window, fixed until it ends. */
+      requiredCoin?: number;
+      heldCoin?: number;
+      windowEndsAt?: string;
+      lockedOut?: boolean;
+    };
+
 export interface PlayerSummary {
   id: string;
   status: 'active' | 'frozen';
@@ -78,6 +99,12 @@ export type OpenRejectCode =
   | 'too_far'
   | 'frozen'
   | 'anticheat'
+  /** Holds less than the required USD of our coin. The message says how much more to buy. */
+  | 'needs_coin'
+  /** Qualified, then dropped below the requirement: paused until the 48 h window ends. */
+  | 'hold_locked'
+  /** The coin balance or price could not be read. Fail closed: nothing was opened or spent. */
+  | 'coin_unavailable'
   | 'invalid_input';
 
 export type OpenCrateResult =

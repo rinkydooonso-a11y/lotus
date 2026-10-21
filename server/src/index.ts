@@ -16,6 +16,16 @@ export {
 } from './crates';
 export { openCrate, type OpenCrateDeps } from './openCrate';
 export { getAllowance } from './tickets';
+export { checkCoinHold, getCoinHoldStatus, pruneHolderWindows, type HoldDeps } from './holding';
+export {
+  coinHoldConfig,
+  fetchCoinBalance,
+  fetchCoinPriceUsd,
+  requiredBaseUnits,
+  toUiAmount,
+  type CoinBalance,
+  type CoinHoldConfig,
+} from './coin';
 export { getPublicOdds, setOdds, dailyBudget, type DailyBudget } from './odds';
 export { applyShards, convertShards } from './shards';
 export { getPlayerHistory, getVaultStats } from './stats';

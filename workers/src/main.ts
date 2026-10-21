@@ -5,6 +5,7 @@ import {
   markPrizeFailed,
   markPrizeSent,
   pgSsl,
+  pruneHolderWindows,
   pruneLocationPings,
   recordSubmittedSignature,
   seedWorldCrates,
@@ -178,6 +179,12 @@ async function main() {
     loops.push(loop('prune-pings', 3_600_000, async () => {
       const n = await pruneLocationPings({ retentionDays: config.PING_RETENTION_DAYS }, db);
       if (n) log.info('pruned old location pings', { count: n });
+    }, controller.signal));
+    // Coin holder windows that ended over a day ago. Harmless to keep, but there is one row per
+    // player and nothing reads a window once it has expired.
+    loops.push(loop('prune-holder-windows', 6 * 3_600_000, async () => {
+      const n = await pruneHolderWindows(db);
+      if (n) log.info('pruned expired holder windows', { count: n });
     }, controller.signal));
   }
 
