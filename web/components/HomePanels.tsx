@@ -5,7 +5,8 @@ import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { setCity } from "@/lib/cityStore";
 import { usd } from "@/lib/format";
-import { FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
+import { COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
+import { LINKS, coinLive } from "@/lib/links";
 import type { Feed, VaultStats } from "@/lib/types";
 import { CitySwap } from "./CitySwap";
 import { ConnectSheet } from "./ConnectSheet";
@@ -160,7 +161,7 @@ export function HomeSections({ feed }: { feed: Feed | null }) {
         <div className="wrap center">
           <div className="cta-mark"><CrateGlyph size={64} /></div>
           <h2 className="sec-title">Your first crate is waiting.</h2>
-          <p className="sec-lede">Free to play. 18+. Play where it&apos;s safe and legal.</p>
+          <p className="sec-lede">{coinLive ? `Hold $${COIN_HOLD_USD} of ${LINKS.ticker} to open crates.` : "Free to play."} 18+. Play where it&apos;s safe and legal.</p>
           <div className="sec-actions">
             {!loading && !user ? <ConnectButton /> : <a href="#top" className="btn btn-lg" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Back to the map</a>}
           </div>

@@ -3,7 +3,7 @@ import type { OpenResult } from "@/lib/types";
 import { TIER_LABEL, usd } from "@/lib/format";
 import { CardThumb } from "./CardThumb";
 import { Sheet } from "./Sheet";
-import { IconAlert, Shard, Ticket } from "./Icons";
+import { IconAlert, IconArrowUpRight, IconCoin, Shard, Ticket } from "./Icons";
 import { LINKS } from "@/lib/links";
 
 const REJECT_TEXT: Record<string, string> = {
@@ -19,6 +19,7 @@ const REJECT_TEXT: Record<string, string> = {
 };
 
 export function ResultModal({ result, onClose, shardsPerTicket }: { result: OpenResult; onClose: () => void; shardsPerTicket: number }) {
+  const coinReject = result.kind === "rejected" && (result.code === "needs_coin" || result.code === "hold_locked");
   return (
     <Sheet onClose={onClose} label={result.kind === "card" ? "You pulled a card" : result.kind === "shards" ? "Shards" : "Couldn't open"} center className={`reveal ${result.kind === "card" ? "r-card t-" + result.tier : "r-" + result.kind}`}>
       {result.kind === "card" && (
@@ -46,12 +47,12 @@ export function ResultModal({ result, onClose, shardsPerTicket }: { result: Open
       )}
       {result.kind === "rejected" && (
         <>
-          <div className="reveal-icon"><IconAlert size={30} /></div>
-          <h2>{result.code === "needs_coin" || result.code === "hold_locked" ? "You need the coin held" : "Couldn't open"}</h2>
+          <div className="reveal-icon">{coinReject ? <IconCoin size={30} /> : <IconAlert size={30} />}</div>
+          <h2>{result.code === "needs_coin" ? "Hold the coin to open" : result.code === "hold_locked" ? "Opening is paused" : "Couldn't open"}</h2>
           {/* The server's message carries the live numbers (how much to hold, how much short). */}
           <p className="reveal-note">{REJECT_TEXT[result.code] ?? result.message}</p>
           {result.code === "needs_coin" && (
-            <a className="btn wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get the coin</a>
+            <a className="btn btn-lg wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get the coin<IconArrowUpRight size={16} /></a>
           )}
         </>
       )}

@@ -13,7 +13,7 @@ import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { LINKS } from "@/lib/links";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
-import { CrateGlyph, IconClose, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
+import { CrateGlyph, IconArrowUpRight, IconClose, IconCoin, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
 
 const STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/dark";
 const PITCH_3D = 55;
@@ -301,8 +301,8 @@ export default function MapView() {
   const canOpen = balances?.opensLeft !== 0;
   // UI hint only; the server re-reads the chain and decides. Shown up front so nobody walks to a
   // crate they can't open yet.
-  const hold = balances?.coinHold;
-  const needsCoin = hold?.gate === "on" && !hold.qualified;
+  const hold = balances?.coinHold?.gate === "on" ? balances.coinHold : null;
+  const needsCoin = !!hold && !hold.qualified;
   const reach = dist === null ? 0 : near ? 1 : Math.max(0.06, Math.min(1, OPEN_RADIUS_M / dist));
 
   const open = async () => {
@@ -389,13 +389,18 @@ export default function MapView() {
             </div>
             <div className="grow">
               <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
-              <p className={near && canOpen && !needsCoin ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : !near ? `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m` : needsCoin && hold?.gate === "on" ? (hold.lockedOut ? `Your coin balance dropped below $${hold.requiredUsd}. Opening resumes when this window ends.` : `Hold $${hold.requiredUsd} of ${LINKS.ticker} to open crates.`) : canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`}</p>
+              <p className={near && canOpen && !needsCoin ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : !near ? `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m` : needsCoin || canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`}</p>
             </div>
             <button className="icon-btn" onClick={() => setSel(null)} aria-label="Close"><IconClose size={16} /></button>
           </div>
-          {near && needsCoin && hold?.gate === "on" && !hold.lockedOut ? (
+          {hold && needsCoin && (
+            <p className="drawer-hold"><IconCoin size={18} />{hold.lockedOut
+              ? `Your balance dropped below $${hold.requiredUsd}. ${hold.windowEndsAt ? `Opening resumes ${new Date(hold.windowEndsAt).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}.` : "Opening resumes when this window ends."}`
+              : `Hold $${hold.requiredUsd} of ${LINKS.ticker} to open crates.`}</p>
+          )}
+          {near && hold && needsCoin && !hold.lockedOut ? (
             // Nothing to tap for an open here, so the button becomes the way to fix it.
-            <a className="btn btn-lg wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}</a>
+            <a className="btn btn-lg wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}<IconArrowUpRight size={16} /></a>
           ) : (
             <button className={near && canOpen && !needsCoin ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening || !canOpen || needsCoin} onClick={() => void open()}>
               {opening ? "Opening…"

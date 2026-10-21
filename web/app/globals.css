@@ -250,6 +250,9 @@ button.group-row:hover,a.group-row:hover{background:rgba(255,255,255,.04)}
 .drawer-row strong{display:block;font:600 18px/1.2 var(--display);letter-spacing:-.015em}
 .drawer-sub{margin:4px 0 0;color:var(--text-2);font-size:14px}
 .drawer-sub.ok{color:var(--live)}
+.drawer-hold{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:11px 14px;border-radius:16px;background:rgba(255,179,64,.1);color:var(--text);font-size:14px;line-height:1.35}
+.drawer-hold svg{flex:none;color:var(--warn)}
+.btn svg{flex:none}
 .reach{position:relative;display:grid;place-items:center;flex:none;width:56px;height:56px}
 .reach svg:first-child{position:absolute;inset:0;width:56px;height:56px;transform:rotate(-90deg)}
 .reach circle{fill:none;stroke-width:3}
