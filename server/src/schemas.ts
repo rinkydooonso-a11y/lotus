@@ -24,6 +24,8 @@ export const OpenCrateSessionSchema = z.object({
 export const OpenCrateInputSchema = OpenCrateRequestSchema.merge(OpenCrateSessionSchema);
 export type OpenCrateInput = z.infer<typeof OpenCrateInputSchema>;
 
+export const LatLngSchema = z.object({ lat: LatSchema, lng: LngSchema });
+
 export const PositionSchema = z.object({
   playerId: z.string().uuid(),
   lat: LatSchema,

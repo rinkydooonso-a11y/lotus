@@ -19,6 +19,9 @@ export interface AreaData {
 export type AreaLoader = (lat: number, lng: number) => Promise<AreaData | null>;
 
 const WATER_LINE_BUFFER_M = 12;
+/** Range pickSpawnPoints searches when the caller doesn't say. The crate seeder passes its own. */
+const DEFAULT_MIN_M = 40;
+const DEFAULT_MAX_M = 250;
 const LINE_STEP_M = 12;
 const AREA_STEP_M = 20;
 const MAX_CANDIDATES = 6_000;
@@ -74,8 +77,8 @@ export function pickSpawnPoints(
   rng: Rng,
   opts: { minM?: number; maxM?: number; spacingM?: number } = {},
 ): LatLng[] {
-  const minM = opts.minM ?? GAME.spawnMinDistanceM;
-  const maxM = opts.maxM ?? GAME.spawnMaxDistanceM;
+  const minM = opts.minM ?? DEFAULT_MIN_M;
+  const maxM = opts.maxM ?? DEFAULT_MAX_M;
   const spacingM = opts.spacingM ?? 30;
   const pr = project(center);
   const inRange = (p: XY) => {
@@ -205,7 +208,7 @@ export function createOverpassLoader(opts: OverpassOptions): AreaLoader {
   const maxCells = opts.maxCells ?? 600;
   const minGap = opts.minGapMs ?? 600;
   const cellM = opts.cellM ?? 400;
-  const pad = GAME.spawnMaxDistanceM + 60;
+  const pad = GAME.citySeedRadiusM + 60;
 
   const cache = new Map<string, { at: number; data: AreaData }>(); // insertion order = LRU order
   const inflight = new Map<string, Promise<AreaData | null>>();

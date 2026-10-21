@@ -6,7 +6,7 @@ import type { AdminInventoryItem, Crate, FeedPull, OpenResult, Tier } from "../t
 import type { GameServer } from "./types";
 
 /** Adapter over `@lotus/server` (see /lotus/docs/contracts.md). */
-const crateView = (c: srv.CrateView): Crate => ({ id: c.id, lat: c.lat, lng: c.lng, kind: c.kind, expiresAt: c.expiresAt });
+const crateView = (c: srv.CrateView): Crate => ({ id: c.id, lat: c.lat, lng: c.lng, kind: c.kind, expiresAt: c.expiresAt, city: c.city });
 const cardResult = (item: PrizeItemView, status: string): Extract<OpenResult, { kind: "card" }> => ({
   kind: "card", tier: item.tier, cardName: item.cardName, grade: item.grade ?? "Graded", valueUsd: item.valueUsd, imageUrl: item.imageUrl ?? undefined, nftMint: item.nftMint,
   status: status === "sent" ? "sent" : status === "failed" ? "failed" : "pending",
@@ -14,8 +14,9 @@ const cardResult = (item: PrizeItemView, status: string): Extract<OpenResult, { 
 
 const maskWallet = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 interface PullRow { id: string; created_at: Date; wallet_address: string; card_name: string; grade: string | null; value_usd: string; tier: Tier; image_url: string | null; kind: Crate["kind"] }
-const PULLS_SQL = `SELECT o.id, o.created_at, o.wallet_address, i.card_name, i.grade, i.value_usd, i.tier, i.image_url, c.kind
-  FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id JOIN crates c ON c.id = o.crate_id
+// roll_kind, not the crate: every world crate is the same, the odds differ when a ticket was spent.
+const PULLS_SQL = `SELECT o.id, o.created_at, o.wallet_address, i.card_name, i.grade, i.value_usd, i.tier, i.image_url, o.roll_kind AS kind
+  FROM crate_openings o JOIN inventory_items i ON i.id = o.inventory_item_id
   WHERE o.result = 'card' AND o.status <> 'withheld'`;
 const pullView = (r: PullRow): FeedPull => ({
   id: r.id, at: r.created_at.toISOString(), cardName: r.card_name, grade: r.grade ?? "Graded", valueUsd: Number(r.value_usd), tier: r.tier,
@@ -27,8 +28,9 @@ export const realServer: GameServer = {
     return (await srv.upsertPlayerByWallet({ address, type: "external" })).playerId;
   },
   async nearbyCrates(playerId, p) {
+    // The ping still matters: anti-cheat walks it to check the player really travelled here.
     await srv.recordLocationPing({ playerId, lat: p.lat, lng: p.lng, accuracyM: p.accuracyM, clientTs: p.ts, deviceId: p.deviceId, ip: p.ip ?? null });
-    return (await srv.spawnCratesNear({ playerId, lat: p.lat, lng: p.lng, anywhere: p.anywhere })).map(crateView);
+    return (await srv.nearbyCrates({ lat: p.lat, lng: p.lng })).map(crateView);
   },
   async openCrate(playerId, crateId, p) {
     const player = await srv.getPlayer(playerId);
@@ -39,13 +41,15 @@ export const realServer: GameServer = {
     if (r.outcome === "card") return cardResult(r.item, r.prizeStatus);
     return { kind: "shards", shards: r.shardsAwarded, ticketsGained: r.ticketsAwarded, shardsTotal: r.shards, ticketsTotal: r.tickets };
   },
-  async useTicket(playerId, p) {
-    const r = await srv.useTicket({ playerId, lat: p.lat, lng: p.lng });
-    return r.ok ? { ok: true, crate: crateView(r.crate), tickets: r.tickets } : { ok: false, code: r.code };
-  },
   async balances(playerId) {
-    const pl = await srv.getPlayer(playerId);
-    return { shards: pl?.shards ?? 0, tickets: pl?.tickets ?? 0 };
+    const [pl, a] = await Promise.all([srv.getPlayer(playerId), srv.getAllowance(playerId)]);
+    return {
+      shards: pl?.shards ?? 0,
+      tickets: a.tickets,
+      freeOpensLeft: a.freeOpensLeft,
+      nextOpenCostsTicket: a.nextOpenCostsTicket,
+      opensLeft: a.opensLeft,
+    };
   },
   async history(playerId) {
     const rows = await srv.getPlayerHistory(playerId, { limit: 100 });

@@ -49,7 +49,7 @@ describe("basic gate", () => {
   it("allows a normal open", async () => {
     const s = setup();
     s.ping(north(30));
-    expect(await s.open(north(10))).toEqual({ ok: true });
+    expect(await s.open(north(10))).toMatchObject({ ok: true });
   });
   it("rejects distance over 40m, poor accuracy, skewed clock, junk input", async () => {
     const s = setup(noCooldown);
@@ -76,7 +76,7 @@ describe("movement plausibility", () => {
       s.ping(north(i * 50));
       s.advance(30_000); // 50m / 30s = 1.7 m/s
     }
-    expect(await s.open(north(10))).toEqual({ ok: true });
+    expect(await s.open(north(10))).toMatchObject({ ok: true });
   });
 
   it("rejects a teleport in the pings, and stays rejected at the spoofed spot", async () => {
@@ -106,7 +106,7 @@ describe("movement plausibility", () => {
     s.advance(5_000);
     s.ping(north(8)); // jitter
     s.advance(5_000);
-    expect(await s.open(north(5))).toEqual({ ok: true });
+    expect(await s.open(north(5))).toMatchObject({ ok: true });
   });
 
   it("flags after repeated strikes and hands the flag to core", async () => {
@@ -127,7 +127,7 @@ describe("movement plausibility", () => {
     s.advance(7 * 3600_000); // a flight
     s.ping(north(20));
     s.advance(5_000);
-    expect(await s.open(north(10))).toEqual({ ok: true });
+    expect(await s.open(north(10))).toMatchObject({ ok: true });
   });
 });
 
@@ -175,10 +175,10 @@ describe("sybil", () => {
     const s = setup({ ...noCooldown, maxWalletsPerDevice: 2, maxWalletsPerFunder: 5, sybilFlagScore: 2, sybilBlockScore: 4 }, info);
     s.ping(CRATE);
     // wallets 0-1: only fresh_wallet (1) -> fine, no flag
-    for (let i = 0; i < 2; i++) expect(await s.open(CRATE, { walletAddress: wallet(i) })).toEqual({ ok: true });
+    for (let i = 0; i < 2; i++) expect(await s.open(CRATE, { walletAddress: wallet(i) })).toMatchObject({ ok: true });
     expect(s.written).toHaveLength(0);
     // wallet 2: device(2) + fresh(1) = 3 -> allowed but flagged
-    expect(await s.open(CRATE, { walletAddress: wallet(2) })).toEqual({ ok: true });
+    expect(await s.open(CRATE, { walletAddress: wallet(2) })).toMatchObject({ ok: true });
     expect(s.written).toEqual([{ playerId: "p1", reason: "sybil" }]);
     // wallet 5+: device(2) + funder(2) + fresh(1) = 5 -> blocked
     for (let i = 3; i < 5; i++) await s.open(CRATE, { walletAddress: wallet(i) });

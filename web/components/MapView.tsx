@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth/client";
 import { haversineM, OPEN_RADIUS_M } from "@/lib/geo";
 import { deviceId } from "@/lib/device";
 import { SERVICE_CITIES } from "@/lib/cities";
-import type { Crate, OpenResult } from "@/lib/types";
+import type { Balances, Crate, OpenResult } from "@/lib/types";
 import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
 import { CitySwap } from "./CitySwap";
@@ -296,11 +296,12 @@ export default function MapView() {
     setOpening(true);
     try {
       const r = await fetch("/api/crates/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ crateId: target.id, ...body(fix) }) });
-      const j = (await r.json().catch(() => ({}))) as { result?: OpenResult; balances?: { shards: number; tickets: number } };
+      const j = (await r.json().catch(() => ({}))) as { result?: OpenResult; balances?: Balances };
       if (j.result) {
         setResult(j.result);
         if (j.balances) setBalances(j.balances);
-        if (j.result.kind !== "rejected" || ["already_opened", "expired", "not_found"].includes(j.result.code)) {
+        // "taken" means somebody else opened it: drop it from the map. "daily_limit" leaves it there.
+        if (j.result.kind !== "rejected" || ["taken", "already_opened", "expired", "not_found"].includes(j.result.code)) {
           setCrates((cs) => cs.filter((c) => c.id !== target.id));
           setSel(null);
         }
@@ -308,18 +309,7 @@ export default function MapView() {
     } finally { setOpening(false); }
   };
 
-  const useTicket = async () => {
-    if (!fix) return;
-    const r = await fetch("/api/crates/ticket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(fix)) });
-    const j = (await r.json()) as { ok: boolean; crate?: Crate; tickets?: number };
-    if (j.ok && j.crate) {
-      setCrates((cs) => [...cs, j.crate!]);
-      setSel(j.crate.id);
-      if (balances && j.tickets !== undefined) setBalances({ ...balances, tickets: j.tickets });
-    }
-  };
-
-  const recenter = () => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17, pitch: tilt ? PITCH_3D : 0 }); };
+  const recenter =() => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17, pitch: tilt ? PITCH_3D : 0 }); };
   const toggleTilt = () => {
     const next = !tilt;
     setTilt(next);
@@ -333,7 +323,8 @@ export default function MapView() {
         <button className={tilt ? "on" : ""} onClick={toggleTilt} aria-label="Toggle 3D view">3D</button>
         <button onClick={recenter} aria-label="Center on me" disabled={!fix}>⌖</button>
       </div>
-      {balances && balances.tickets > 0 && <button className="fab ticketfab" onClick={() => void useTicket()}>🎟 Use ticket</button>}
+      {/* Tickets are spent by opening, not by a button: the next open after the free one uses one. */}
+      {balances && balances.tickets > 0 && <div className="fab ticketfab" role="status">🎟 {balances.tickets} extra {balances.tickets === 1 ? "open" : "opens"}</div>}
 
       {!user && !loading && (
         walletBrowser ? <div className="cta"><WalletBrowserNotice /></div> : (
@@ -385,7 +376,13 @@ export default function MapView() {
             </div>
             <button className="x" onClick={() => setSel(null)} aria-label="Close">✕</button>
           </div>
-          <button className="btn wide" disabled={!near || opening} onClick={() => void open()}>{opening ? "Opening…" : near ? "Open crate" : "Walk closer"}</button>
+          <button className="btn wide" disabled={!near || opening || balances?.opensLeft === 0} onClick={() => void open()}>
+            {opening ? "Opening…"
+              : !near ? "Walk closer"
+              : balances?.opensLeft === 0 ? "Come back tomorrow"
+              : balances?.nextOpenCostsTicket ? "Open crate (1 🎟)"
+              : "Open crate"}
+          </button>
         </div>
       )}
       {result && <ResultModal result={result} onClose={() => setResult(null)} />}

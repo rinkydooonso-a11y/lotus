@@ -55,7 +55,7 @@ export function PullsFeed({ feed }: { feed: Feed | null }) {
                 <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} />
                 <div className="grow">
                   <div className="pull-name">{p.cardName} {p.grade}</div>
-                  <div className="pull-meta"><span className={`tc-${p.tier}`}>{TIER_LABEL[p.tier]}</span><b>{usd(p.valueUsd)}</b><span className={`tag${p.crateKind === "ticket" ? " gold" : ""}`}>{p.crateKind === "ticket" ? "Ticket crate" : "Street crate"}</span></div>
+                  <div className="pull-meta"><span className={`tc-${p.tier}`}>{TIER_LABEL[p.tier]}</span><b>{usd(p.valueUsd)}</b><span className={`tag${p.crateKind === "ticket" ? " gold" : ""}`}>{p.crateKind === "ticket" ? "Ticket open" : "Street crate"}</span></div>
                   <div className="pull-by muted"><span className="mono">{p.collector}</span><span>{timeAgo(p.at)}</span></div>
                 </div>
               </li>
