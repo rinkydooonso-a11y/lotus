@@ -22,6 +22,7 @@ export const IconLocate = (p: P) => <Svg {...p}><path d="M20 4 4.6 10.4a.5.5 0 0
 export const IconExpand = (p: P) => <Svg {...p}><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15" /></Svg>;
 export const IconGlobe = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.2 2.3 3.3 5 3.3 8s-1.1 5.7-3.3 8c-2.2-2.3-3.3-5-3.3-8s1.1-5.7 3.3-8Z" /></Svg>;
 export const IconAlert = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v5.2" /><circle cx="12" cy="16.2" r=".4" fill="currentColor" /></Svg>;
+export const IconCoin = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.6" /><path d="M12 9.6v4.8" /></Svg>;
 export const IconX = ({ size = 15, ...p }: P) => <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...p}><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.77L17.75 3Zm-1.08 16.2h1.7L7.4 4.7H5.58l11.09 14.5Z" /></svg>;
 
 /** Shard: a faceted purple gem. */
