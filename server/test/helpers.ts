@@ -3,6 +3,7 @@ import pg from 'pg';
 import type { Rng } from '../src/rng';
 import { upsertPlayerByWallet } from '../src/players';
 import type { AreaData, LatLng } from '../src/walkable';
+import type { CoinBalance, CoinHoldConfig } from '../src/coin';
 
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 30 });
 
@@ -16,7 +17,7 @@ export const TEST_CITY = { name: 'Testville', lat: LAT, lng: LNG, radiusKm: 2 } 
 export async function reset() {
   await pool.query(`TRUNCATE prize_sends, crate_openings, inventory_items, ticket_spends, crates,
                     location_pings, player_flags, player_open_days, prize_budget_days,
-                    wallets, players, treasury_events CASCADE`);
+                    holder_windows, wallets, players, treasury_events CASCADE`);
 }
 
 export async function newPlayer() {
@@ -79,3 +80,30 @@ export const plazaLoader = (halfM = 350) => async (lat: number, lng: number): Pr
 
 /** An area loader standing in for Overpass being down. */
 export const noAreaLoader = async (): Promise<AreaData | null> => null;
+
+// Coin holder gate -------------------------------------------------------------
+
+/** A gate configuration that needs no network: pass stub balance/price lookups alongside it. */
+export const HOLD_CFG: CoinHoldConfig = {
+  mint: 'CoinMint11111111111111111111111111111111111',
+  requiredUsd: 25,
+  windowMs: 48 * 3_600_000,
+  recheckMs: 10 * 60_000,
+  rpcUrl: 'http://rpc.invalid',
+  priceUrl: 'http://price.invalid',
+};
+
+/** Holds `coin` whole tokens at 6 decimals, the pump.fun default. */
+export const heldCoin = (coin: number) => async (): Promise<CoinBalance> => ({
+  baseUnits: BigInt(Math.round(coin * 1e6)),
+  decimals: 6,
+});
+export const coinPrice = (usd: number) => async () => usd;
+export const lookupDown = async (): Promise<never> => {
+  throw new Error('rpc unavailable');
+};
+
+/** Gate deps that let the player through: they hold plenty at a known price. */
+export const holdOk = (db: pg.Pool) => ({
+  db, config: HOLD_CFG, balance: heldCoin(1_000_000), price: coinPrice(0.0001),
+});

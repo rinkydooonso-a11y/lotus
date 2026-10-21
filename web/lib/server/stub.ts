@@ -151,6 +151,8 @@ export const stubServer: GameServer = {
       opensLeft: freeOpensLeft + p.tickets,
       freeOpensPerDay: FREE_OPENS_PER_DAY,
       shardsPerTicket: SHARDS_PER_TICKET,
+      // Dev mode has no chain to read, so the coin requirement is always off here.
+      coinHold: { gate: "off" },
     };
   },
   async history(playerId) { return player(playerId).history.slice(0, 100); },

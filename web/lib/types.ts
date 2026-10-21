@@ -1,4 +1,4 @@
-export type RejectCode = "not_found" | "taken" | "expired" | "already_opened" | "daily_limit" | "too_far" | "frozen" | "anticheat" | "invalid_input" | "unavailable";
+export type RejectCode = "not_found" | "taken" | "expired" | "already_opened" | "daily_limit" | "too_far" | "frozen" | "anticheat" | "needs_coin" | "hold_locked" | "coin_unavailable" | "invalid_input" | "unavailable";
 export type Tier = "common" | "uncommon" | "rare" | "grail";
 
 /** A crate on the map. World crates belong to nobody: the first player to open one takes it. */
@@ -41,7 +41,24 @@ export interface Balances {
   /** The daily allowance and the ticket price, so copy never hardcodes either number. */
   freeOpensPerDay: number;
   shardsPerTicket: number;
+  /** The coin requirement. `gate: "off"` means there is no coin requirement yet. */
+  coinHold: CoinHold;
 }
+
+/** Where the player stands on the coin holding requirement. */
+export type CoinHold =
+  | { gate: "off" }
+  | {
+      gate: "on";
+      /** True while they are inside a qualifying 48 hour window. */
+      qualified: boolean;
+      requiredUsd: number;
+      /** Coin amount fixed for this window. */
+      requiredCoin?: number;
+      heldCoin?: number;
+      windowEndsAt?: string;
+      lockedOut?: boolean;
+    };
 
 export interface HistoryEntry {
   id: string;
