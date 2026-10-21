@@ -13,7 +13,7 @@ Researched 2026-10-20 (read-only, web search and public GitHub docs). Handoff do
 ### 2. Does pump.fun accept a Squads vault as creator-reward recipient?
 **Probably yes, UNCONFIRMED.**
 - Fee-sharing shareholders are plain `{ address, share_bps }` entries; the docs don't restrict them to wallets or say PDAs are allowed ([CREATOR_FEE_SHARING.md](https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/CREATOR_FEE_SHARING.md)). Max 10 shareholders, shares sum to 10,000 bps.
-- For non-SOL quote mints (our CARDS case) payouts go to each shareholder's **associated token account** for the quote mint. A Squads vault is an off-curve PDA, which is fine for ATAs, but the ATA must exist (the instruction has an `initialize_ata` flag that creates missing ones, payer covers rent). Create the vault's CARDS ATA beforehand to be safe.
+- For non-SOL quote mints (our QUEST case) payouts go to each shareholder's **associated token account** for the quote mint. A Squads vault is an off-curve PDA, which is fine for ATAs, but the ATA must exist (the instruction has an `initialize_ata` flag that creates missing ones, payer covers rent). Create the vault's QUEST ATA beforehand to be safe.
 - Squads says only the **vault** address (not the multisig account address) should receive assets; sending to the multisig account address loses funds ([Squads docs](https://docs.squads.so/main/navigating-your-squad/settings-and-members)). Use the vault address.
 - **Do a tiny test first** if the form lets you, or default to the safe fallback: set a normal wallet as recipient and forward to Squads.
 
@@ -22,8 +22,8 @@ Researched 2026-10-20 (read-only, web search and public GitHub docs). Handoff do
 ### 3. Current pump.fun fee schedule; can fee or pair change after launch?
 **Partly UNCONFIRMED.**
 - Pump.fun's own docs page (`pump.fun/docs/fees`) was unreachable, so I have not seen the current schedule, including the 17 Oct 2026 platform fee mentioned in the handoff.
-- Custom pairs: creator fees are paid **in the pair's quote asset** (so CARDS for us), and 50% of Custom Pairs revenue goes to the PUMP buyback-and-burn contract ([The Defiant](https://thedefiant.io/news/defi/pump-fun-lets-creators-launch-coins-priced-in-tokenized-stocks), [Incrypted](https://incrypted.com/en/pump-fun-expanded-its-platform-with-tokenized-stocks-featuring-custom-pairs-function/)).
-- **Superseded (2026-10-20):** pump.fun's docs give the creator fee as 0.30% before graduation and 0.95% after PumpSwap, stepping down; do not plan around the ranges below. **Original note, kept for history:** **Conflict on the creator fee range:** news reports say custom-pair creator fee is flat 0.05%-1% (or cashback), field accepting 0.01-1 ([Cryptowisser](https://www.cryptowisser.com/news/pumpfun-lets-creators-pair-new-tokens-with-tokenized-stocks/?lang=en), [cryptonews.net](https://cryptonews.net/news/market/33421807/)). The handoff says the live form showed 0.01-3%. **Trust the live form at launch time, and check whether 3% really applies to a CARDS pair**, since the prize-math table depends on it.
+- Custom pairs: creator fees are paid **in the pair's quote asset** (so QUEST for us), and 50% of Custom Pairs revenue goes to the PUMP buyback-and-burn contract ([The Defiant](https://thedefiant.io/news/defi/pump-fun-lets-creators-launch-coins-priced-in-tokenized-stocks), [Incrypted](https://incrypted.com/en/pump-fun-expanded-its-platform-with-tokenized-stocks-featuring-custom-pairs-function/)).
+- **Superseded (2026-10-20):** pump.fun's docs give the creator fee as 0.30% before graduation and 0.95% after PumpSwap, stepping down; do not plan around the ranges below. **Original note, kept for history:** **Conflict on the creator fee range:** news reports say custom-pair creator fee is flat 0.05%-1% (or cashback), field accepting 0.01-1 ([Cryptowisser](https://www.cryptowisser.com/news/pumpfun-lets-creators-pair-new-tokens-with-tokenized-stocks/?lang=en), [cryptonews.net](https://cryptonews.net/news/market/33421807/)). The handoff says the live form showed 0.01-3%. **Trust the live form at launch time, and check whether 3% really applies to a QUEST pair**, since the prize-math table depends on it.
 - Can fee/pair change after launch? **UNCONFIRMED.** Nothing I read says a creator can change the pair; the handoff's "assume locked" is the right assumption. Separately, protocol-level rates live in pump's global config (`GlobalConfig` / `Global`), which pump.fun controls and has changed repeatedly ([PumpSwap creator fee doc](https://github.com/pump-fun/pump-public-docs/blob/main/docs/PUMP_SWAP_CREATOR_FEE_README.md), [Pump creator fee doc](https://github.com/pump-fun/pump-public-docs/blob/main/docs/PUMP_CREATOR_FEE_README.md); both older docs). Expect the platform, not you, to be able to change rules.
 - Shares can be changed once after a CTO (Incrypted, secondhand).
 
@@ -33,21 +33,21 @@ Researched 2026-10-20 (read-only, web search and public GitHub docs). Handoff do
 - **If you DO create a sharing config** (needed for the "up to 10 recipients" feature): the old collect instructions fail. Flow is: `transfer_creator_fees_to_pump_v2` (AMM to bonding-curve vault, permissionless), then `distribute_creator_fees_v2` (permissionless) pays each shareholder's quote-mint ATA by `share_bps`. Remaining accounts: shareholders first, then their ATAs, in config order.
 - Fees also accrue in the pool/curve until swept (`sweep_creator_fee`, permissionless, per SWEEP_FEES.md; I only saw its summary).
 - Code: pump publishes IDLs and docs in that repo. A community package `@nirholas/pump-sdk` exists but is **unverified**; don't use it with real keys. Check the official `@pump-fun/pump-sdk` / `pump-swap-sdk` yourself (UNCONFIRMED which package names are current).
-- **Design choice for the fee-claimer worker:** if the recipient is a Squads vault, distribution is permissionless so a bot with a tiny gas wallet can call it and funds land in Squads directly. No hot key ever touches the CARDS.
+- **Design choice for the fee-claimer worker:** if the recipient is a Squads vault, distribution is permissionless so a bot with a tiny gas wallet can call it and funds land in Squads directly. No hot key ever touches the QUEST.
 
 ## Manual runbook (MVP)
 
 Never paste seed phrases anywhere. Do mainnet steps from a signer you control; every mainnet transaction needs a human to confirm.
 
 ### A. Claim creator fees
-1. Open your coin page on pump.fun with the creator wallet (or a Squads-recipient if set up), and check the claimable CARDS balance.
-2. If recipient is a normal wallet and no sharing config: click claim in the creator rewards UI (or call `collect_creator_fee_v2` / `collect_coin_creator_fee`). CARDS lands in that wallet's ATA.
-3. If using sharing config with Squads as recipient: run `transfer_creator_fees_to_pump_v2` then `distribute_creator_fees_v2` (or use pump's UI if it exposes a claim/distribute button). CARDS lands in the Squads vault's CARDS ATA.
-4. Normal wallet case: send the CARDS to the Squads **vault** address (not the multisig address) and confirm on Solscan.
+1. Open your coin page on pump.fun with the creator wallet (or a Squads-recipient if set up), and check the claimable QUEST balance.
+2. If recipient is a normal wallet and no sharing config: click claim in the creator rewards UI (or call `collect_creator_fee_v2` / `collect_coin_creator_fee`). QUEST lands in that wallet's ATA.
+3. If using sharing config with Squads as recipient: run `transfer_creator_fees_to_pump_v2` then `distribute_creator_fees_v2` (or use pump's UI if it exposes a claim/distribute button). QUEST lands in the Squads vault's QUEST ATA.
+4. Normal wallet case: send the QUEST to the Squads **vault** address (not the multisig address) and confirm on Solscan.
 5. Log it for the public treasury page (`treasury_events`).
 
 ### B. Buy cards on Collector Crypt (manual, per handoff)
-1. In Squads, propose a transfer (or swap) of CARDS to USDC, since the marketplace prices in USDC (secondhand). Approve with the required signers. A swap via Jupiter from the Squads app is the likely route (UNCONFIRMED in the UI).
+1. In Squads, propose a transfer (or swap) of QUEST to USDC, since the marketplace prices in USDC (secondhand). Approve with the required signers. A swap via Jupiter from the Squads app is the likely route (UNCONFIRMED in the UI).
 2. Fund a **purchasing wallet** (small) with only what you will spend. Do not connect the Squads vault to the site if avoidable.
 3. On collectorcrypt.com marketplace, pick individual cards by tier (Common <$30, Uncommon $30-75, Rare $75-300, Grail $300+), buy with USDC.
 4. Confirm the NFT arrived; record mint, name, grade, value in `inventory_items`.
@@ -64,5 +64,5 @@ Never paste seed phrases anywhere. Do mainnet steps from a signer you control; e
 - Read pump.fun/docs/fees on the live site: platform fee from 17 Oct 2026, custom-pair fee range, any fee-change rules.
 - (Superseded: use pump.fun's documented 0.30% / 0.95% schedule rather than a 3% pair fee.) Do not enable Holder Rewards.
 - Ask Collector Crypt for API docs; until then buy by hand.
-- Test a Squads vault as fee recipient with a small amount, and pre-create the vault's CARDS ATA.
+- Test a Squads vault as fee recipient with a small amount, and pre-create the vault's QUEST ATA.
 - Remember `update_fee_shares_v2` is effectively one-shot: fee sharing at 100% to the vault is permanent.

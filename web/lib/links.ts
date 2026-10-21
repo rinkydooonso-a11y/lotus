@@ -3,7 +3,7 @@
 const COIN_ADDRESS = process.env.NEXT_PUBLIC_COIN_ADDRESS?.trim() || "COIN_ADDRESS_PLACEHOLDER";
 
 export const LINKS = {
-  ticker: "$CARDS", // pump.fun ticker, shown across the site
+  ticker: "$QUEST", // pump.fun ticker, shown across the site
   coin: COIN_ADDRESS,
   x: "https://x.com/cardquestsol",
   xHandle: "@cardquestsol",
