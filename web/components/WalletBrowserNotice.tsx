@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { inWalletBrowser } from "@/lib/auth/phantomDeeplink";
+import { IconCheck, IconCopy } from "./Icons";
 
 /** Wallet in-app browsers on phones never answer the location prompt; send players to their real browser. */
 export function useInWalletBrowser(): boolean {
@@ -13,11 +14,11 @@ export function WalletBrowserNotice() {
   const [copied, setCopied] = useState(false);
   const copy = () => { void navigator.clipboard?.writeText(window.location.origin).then(() => setCopied(true)).catch(() => undefined); };
   return (
-    <>
-      <p className="eyebrow">Wrong browser</p>
-      <h2>Open CardQuest in <em>Safari or Chrome.</em></h2>
-      <p className="muted">Location doesn&apos;t work inside the wallet&apos;s browser. You can still sign in with Phantom from Safari or Chrome.</p>
-      <button className="btn wide" onClick={copy}>{copied ? "Link copied" : "Copy link"}</button>
-    </>
+    <div className="notice">
+      <p className="notice-kicker">Wrong browser</p>
+      <h2>Open CardQuest in Safari or Chrome.</h2>
+      <p>Location doesn&apos;t work inside the wallet&apos;s browser. You can still sign in with Phantom from Safari or Chrome.</p>
+      <button className="btn btn-lg wide" onClick={copy}>{copied ? <><IconCheck size={18} />Link copied</> : <><IconCopy size={18} />Copy link</>}</button>
+    </div>
   );
 }

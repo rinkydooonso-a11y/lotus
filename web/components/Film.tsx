@@ -4,6 +4,8 @@ import maplibregl from "maplibre-gl";
 import { cityByName, useCity } from "@/lib/cityStore";
 import { Mark } from "./Logo";
 import { QrCard } from "./QrCard";
+import { CardThumb } from "./CardThumb";
+import { IconChevronLeft, IconChevronRight, IconClose, IconPause, IconPlay, IconReplay } from "./Icons";
 import { LINKS } from "@/lib/links";
 
 /** Open the "How CardQuest works" film from anywhere. */
@@ -41,17 +43,17 @@ function Stage({ stage, p }: { stage: string; p: number }) {
       return <div className="fs fs-walk"><span className="fs-at" style={{ left: "64%", top: "38%" }}><Cube /></span><span className={m <= 40 ? "fs-tag in" : "fs-tag"} style={{ left: "64%", top: "30%" }}>{m <= 40 ? "In reach" : `${m} m`}</span><span className="fs-you" style={{ left: `${30 + 30 * Math.min(1, p * 1.4)}%`, top: `${70 - 26 * Math.min(1, p * 1.4)}%` }} /></div>;
     }
     case "burst":
-      return <div className="fs fs-burst"><span className="fs-glow" /><span className="fs-rays" /><span className="fs-big"><Mark size={120} /></span></div>;
+      return <div className="fs fs-burst"><span className="fs-glow" /><span className="fs-big"><Mark size={120} /></span></div>;
     case "card":
-      return <div className="fs fs-card"><div className="fan"><div className="slab s-common lg back l"><div className="slab-label"><span>PSA 9</span></div><div className="slab-art"><i /></div></div><div className="slab s-uncommon lg back r"><div className="slab-label"><span>CGC 9</span></div><div className="slab-art"><i /></div></div><div className="slab s-rare lg front"><div className="slab-label"><span>PSA 10</span></div><div className="slab-art"><i /></div></div></div><b className="fs-price tc-rare">$280</b><span className="tag">PSA GEM MINT 10</span></div>;
+      return <div className="fs fs-card"><div className="fan"><div className="back l"><CardThumb tier="common" grade="PSA 9" size="lg" /></div><div className="back r"><CardThumb tier="uncommon" grade="CGC 9" size="lg" /></div><div className="front"><CardThumb tier="rare" grade="PSA 10" size="lg" /></div></div><b className="fs-price tc-rare">$280</b><span className="tag">PSA GEM MINT 10</span></div>;
     case "tiers":
-      return <div className="fs fs-tiers">{([["grail", "Grail", "$300+", 3], ["rare", "Rare", "$75–$300", 9], ["uncommon", "Uncommon", "$30–$75", 24], ["common", "Common", "Under $30", 61]] as const).map(([k, n, r, c], i) => <div key={k} className={`fs-tier s-${k}`} style={{ animationDelay: `${i * 0.12}s` }}><b className={`tc-${k}`}>{n}</b><small>{r}</small><span>{c}</span></div>)}</div>;
+      return <div className="fs fs-tiers">{([["grail", "Grail", "$300+", 3], ["rare", "Rare", "$75–$300", 9], ["uncommon", "Uncommon", "$30–$75", 24], ["common", "Common", "Under $30", 61]] as const).map(([k, n, r, c], i) => <div key={k} className={`fs-tier t-${k}`} style={{ animationDelay: `${i * 0.12}s` }}><b className={`tc-${k}`}>{n}</b><small>{r}</small><span>{c}</span></div>)}</div>;
     case "wallet":
-      return <div className="fs fs-wallet"><div className="slab s-grail lg"><div className="slab-label"><span>PSA 10</span></div><div className="slab-art"><i /></div></div><span className="fs-arrow" style={{ opacity: Math.min(1, p * 2) }}>→</span><div className="fs-walletbox" style={{ opacity: Math.min(1, p * 2) }}><b>Your wallet</b><span>Received 1 NFT</span></div></div>;
+      return <div className="fs fs-wallet"><CardThumb tier="grail" grade="PSA 10" size="lg" /><span className="fs-arrow" style={{ opacity: Math.min(1, p * 2) }}><IconChevronRight size={40} strokeWidth={2.2} /></span><div className="fs-walletbox" style={{ opacity: Math.min(1, p * 2) }}><b>Your wallet</b><span>Received 1 NFT</span></div></div>;
     case "flow":
       return <div className="fs fs-flow"><div className="flow-node"><b>Every {LINKS.ticker} trade</b><span>on pump.fun</span></div><span className="fs-dots" /><div className="flow-tag">creator fee</div><span className="fs-dots" /><div className="flow-node"><b>Treasury</b><span>swapped to USDC</span></div><span className="fs-dots" /><div className="flow-node vault"><b>The vault</b><span>fills the crates</span></div></div>;
     case "qr":
-      return <div className="fs fs-qr"><QrCard className="film-qr" /></div>;
+      return <div className="fs fs-qr"><QrCard /></div>;
     default:
       return null;
   }
@@ -124,17 +126,17 @@ export function FilmHost() {
       <div className="reel-stage" key={`s${ch}`}><Stage stage={c.stage} p={p} /></div>
       <div className="reel-top">
         <div className="reel-chapters">{CHAPTERS.map((x, i) => <button key={x.name} onClick={() => go(i)} aria-label={`Chapter ${i + 1}: ${x.name}`}><i style={{ transform: `scaleX(${Math.max(0, Math.min(1, (t - i * CH_MS) / CH_MS))})` }} /></button>)}</div>
-        <button className="reel-close" onClick={close} aria-label="Close">✕</button>
+        <button className="reel-btn" onClick={close} aria-label="Close"><IconClose size={18} /></button>
       </div>
       <div className="reel-copy" key={`c${ch}`}>
         <h2 className="film-title"><Words text={c.title} /></h2>
         <p className="film-caption">{c.caption}</p>
-        {done && <button className="pill outline" onClick={() => go(0)}>Watch again</button>}
+        {done && <button className="btn btn-gray" onClick={() => go(0)}><IconReplay size={16} />Watch again</button>}
       </div>
       <div className="reel-controls">
-        <button onClick={() => go(ch - 1)} aria-label="Previous chapter"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg></button>
-        <button className="reel-play" onClick={toggle} aria-label={done ? "Replay" : playing ? "Pause" : "Play"}>{done ? "↻" : playing ? <svg width="18" height="18" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" /></svg> : <svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4v16l13-8z" fill="currentColor" /></svg>}</button>
-        <button onClick={() => go(ch + 1)} aria-label="Next chapter"><svg width="18" height="18" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg></button>
+        <button className="reel-btn" onClick={() => go(ch - 1)} aria-label="Previous chapter"><IconChevronLeft size={18} strokeWidth={2.2} /></button>
+        <button className="reel-btn reel-play" onClick={toggle} aria-label={done ? "Replay" : playing ? "Pause" : "Play"}>{done ? <IconReplay size={20} strokeWidth={2.2} /> : playing ? <IconPause size={18} /> : <IconPlay size={18} />}</button>
+        <button className="reel-btn" onClick={() => go(ch + 1)} aria-label="Next chapter"><IconChevronRight size={18} strokeWidth={2.2} /></button>
         <span className="reel-where"><b>{c.name}</b><small>{ch + 1} / {CHAPTERS.length}</small></span>
       </div>
     </div>

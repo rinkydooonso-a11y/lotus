@@ -7,9 +7,9 @@ export const metadata: Metadata = { title: "Terms of Play · CardQuest", descrip
 // Plain-language draft. Have a lawyer review before mainnet launch; eligibility and prize rules vary by country.
 export default function Terms() {
   return (
-    <div className="docs">
+    <div className="docs prose">
       <h1>Terms of Play</h1>
-      <p className="muted small">Last updated: October 2026</p>
+      <p className="updated">Last updated: October 2026</p>
       <p>CardQuest is a free map game. You walk to crates, open them, and can win shards, tickets or a real graded trading card sent to your Solana wallet. By connecting a wallet you agree to these terms.</p>
 
       <h2>Who can play</h2>

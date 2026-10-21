@@ -13,11 +13,14 @@ export default async function Coin() {
   return (
     <div className="docs">
       <section className="docs-hero">
+        <p className="page-kicker">The coin</p>
         <h1>{LINKS.ticker}</h1>
         <p className="docs-lede">The CardQuest coin. Every trade pays a creator fee, and that fee buys the graded cards hiding in the crates. More trading, fuller vault.</p>
-        <div className="row-gap"><CaChip full /><XButton /></div>
-        {coinLive ? <a className="pill primary wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Buy on pump.fun</a> : <span className="pill wide disabled">Launching soon</span>}
-        <p className="faint small">Not financial advice. Nothing here promises any price or return.</p>
+        <div className="coin-actions">
+          <div className="row-gap"><CaChip full /><XButton /></div>
+          {coinLive && <a className="btn btn-lg" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Buy on pump.fun</a>}
+          <p className="faint small">Not financial advice. Nothing here promises any price or return.</p>
+        </div>
       </section>
 
       <section><h2>Where the fees go</h2><FeeFlow /></section>

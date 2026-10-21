@@ -6,9 +6,9 @@ export const metadata: Metadata = { title: "Privacy · CardQuest", description: 
 // Plain-language draft. Have a lawyer review before mainnet launch. Retention matches PING_RETENTION_DAYS (default 30).
 export default function Privacy() {
   return (
-    <div className="docs">
+    <div className="docs prose">
       <h1>Privacy</h1>
-      <p className="muted small">Last updated: October 2026</p>
+      <p className="updated">Last updated: October 2026</p>
       <p>We collect what we need to run a location game and stop cheating, and no more. We do not sell your data and we do not ask for your name or email.</p>
 
       <h2>What we collect</h2>
