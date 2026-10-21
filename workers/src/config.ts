@@ -95,6 +95,10 @@ const EnvSchema = z.object({
   PRIZE_SENDER_BATCH: z.coerce.number().int().min(1).max(50).default(10),
   PRIZE_SENDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
   INVENTORY_SYNC_INTERVAL_MS: z.coerce.number().int().min(10_000).default(120_000),
+  /** How often the world-crate seeder tops the launch cities up. */
+  CRATE_SEED_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
+  /** OpenStreetMap lookups one seeder tick may make, across every city. */
+  CRATE_SEED_MAX_ANCHORS: z.coerce.number().int().min(1).max(50).default(8),
   /** Location pings older than this are deleted hourly. Anti-cheat reads at most the last 6 hours. */
   PING_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
   /** Priority fee in micro-lamports per compute unit. */

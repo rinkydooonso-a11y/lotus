@@ -7,9 +7,9 @@ import type { AdminInventoryItem, Balances, Crate, Feed, FlaggedPlayer, HistoryE
  */
 export interface GameServer {
   playerForWallet(address: string): Promise<string>;
+  /** Records the location ping and returns the world crates around it. Creates nothing. */
   nearbyCrates(playerId: string, ping: LocationPing): Promise<Crate[]>;
   openCrate(playerId: string, crateId: string, ping: LocationPing): Promise<OpenResult>;
-  useTicket(playerId: string, ping: LocationPing): Promise<{ ok: true; crate: Crate; tickets: number } | { ok: false; code: "no_tickets" | "frozen" }>;
   balances(playerId: string): Promise<Balances>;
   history(playerId: string): Promise<HistoryEntry[]>;
   vaultStats(): Promise<VaultStats>;

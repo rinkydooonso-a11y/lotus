@@ -24,15 +24,17 @@ Env: `DATABASE_URL` (Postgres connection string). `getPool()` reads it lazily.
 
 | table | key columns |
 |---|---|
-| `players` | id uuid, status `active\|frozen`, shards int, tickets int (0..5), first_crate_spawned bool, created_at |
+| `players` | id uuid, status `active\|frozen`, shards int, tickets int (0..5), created_at |
 | `wallets` | id, player_id, address (unique), type `external\|embedded`, is_primary, created_at |
-| `crates` | id, location geography(Point,4326), spawned_for_player_id, kind `standard\|ticket`, tier_hint, status `active\|opened\|expired`, spawned_at, expires_at, opened_at |
+| `crates` | id, location geography(Point,4326), city (world crates; `spawned_for_player_id` is NULL and only set on the retired per-player rows), kind, tier_hint, status `active\|opened\|expired`, spawned_at, expires_at, opened_at, claimed_by_player_id |
 | `location_pings` | id bigserial, player_id, location geography, accuracy_m, recorded_at (server time), client_ts, device_id, ip |
 | `inventory_items` | id, nft_mint (unique), card_name, grade, value_usd numeric, tier `common\|uncommon\|rare\|grail`, status `available\|reserved\|sent\|withheld\|removed`, reserved_by_opening_id, reserved_at, sent_at, acquired_at, image_url, metadata jsonb, location `hot\|vault`, cost_usd |
-| `crate_openings` | id, crate_id (unique), player_id, wallet_address, rolled_tier, result `card\|shards`, downgraded bool, shards_awarded, tickets_awarded, inventory_item_id (unique), status `complete\|pending\|sent\|failed\|withheld`, tx_signature, client_lat/lng/accuracy, device_id, ip, created_at |
+| `crate_openings` | id, crate_id (unique), player_id, wallet_address, rolled_tier, roll_kind `standard\|ticket`, ticket_spent bool, result `card\|shards`, downgraded bool, budget_capped bool, shards_awarded, tickets_awarded, inventory_item_id (unique), status `complete\|pending\|sent\|failed\|withheld`, tx_signature, client_lat/lng/accuracy, device_id, ip, created_at |
 | `prize_sends` | id, opening_id (unique), inventory_item_id (unique), nft_mint, recipient_address, status `queued\|processing\|submitted\|sent\|failed\|withheld`, attempts, tx_signature, last_error, locked_until, created_at, updated_at, sent_at |
 | `odds_config` | crate_kind, tier (`common..grail` or `shards`), weight int (parts per 1,000,000) |
-| `ticket_spends` | id, player_id, crate_id, created_at |
+| `ticket_spends` | id, player_id, opening_id, created_at (crate_id kept for the old rows) |
+| `player_open_days` | player_id, open_day date (PK pair), opens_used, free_used, tickets_used, first/last_open_at |
+| `prize_budget_days` | budget_day date (PK), cards_awarded, value_awarded_usd, updated_at |
 | `treasury_events` | id, kind `claim\|purchase\|topup\|other`, amount numeric, asset, usd_value, tx_signature, note, inventory_item_id, created_at |
 | `player_flags` | id, player_id, source, reason, details jsonb, created_at, resolved_at (anti-cheat writes here) |
 
@@ -42,17 +44,25 @@ Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–30
 
 ## Game rules implemented by core
 
-- Crates spawn for one player and are only visible/openable by that player. Expire 30 min after spawn.
-- Up to 3 active crates per player, max 40 spawns per player per UTC day.
-- The very first crate for a player spawns at their position; later ones at a random point 40–250 m away.
-- No walkability filtering for launch (simple approach). Crates can land on water/roads; noted in decisions.md.
+- Crates are shared. A seeder worker keeps `cratesPerCity` (default 15) alive in each launch city; a crate
+  belongs to nobody, any player who reaches it can open it, and opening it takes it off the map for everyone.
+  A crate lives `crateTtlMs` (default 12 h) and the seeder replaces the ones that go.
+- Global ceiling of `maxWorldCratesPerDay` (default 250) crates created per UTC day, whatever the per-city target says.
+- Crates land only on walkable OpenStreetMap ground, never in water, and no two active crates are within
+  `crateMinSpacingM` (default 120 m). When Overpass is unavailable nothing is placed.
+- One player gets `freeOpensPerDay` (default 1) free opens a UTC day. Every further open that day spends a
+  ticket and rolls on the `ticket` odds. Enforced by a conditional write on `player_open_days` inside the
+  open transaction, so two simultaneous opens can't both take it.
+- Daily prize budget: `maxCardsPerDay` (10) and `maxCardValueUsdPerDay` (300). A card is booked against
+  `prize_budget_days` in the open transaction, so the day's ceiling is exact under concurrent wins. Past
+  either ceiling the card tiers roll 0 and opens pay shards; `getPublicOdds` shows that.
 - Open radius 40 m, checked in SQL with `ST_DWithin` inside the open transaction.
 - Odds: roll `crypto.randomInt(0, 1_000_000)` against `odds_config` for the crate kind. A tier with zero
   available inventory gets weight 0 (its weight flows to shards), and if the reservation still finds nothing
   (race), the result is downgraded to shards.
 - Shards: empty crate pays 1–3 shards (CSPRNG). 10 shards auto-convert into 1 ticket while tickets < 5.
   Extra shards stay in the balance and convert once a ticket is spent.
-- A ticket spawns a `ticket` crate at the player's position with better odds (`useTicket`).
+- A ticket is spent by opening, not by a button of its own, so it can never be wasted on a crate the player doesn't reach.
 
 ## Functions other threads call
 
@@ -67,10 +77,14 @@ getPlayer(playerId: string, db?): Promise<PlayerSummary | null>   // status, sha
 recordLocationPing(input: PingInput, db?): Promise<void>
 // PingInput = { playerId, lat, lng, accuracyM, clientTs: number (ms epoch), deviceId: string, ip?: string }
 
-spawnCratesNear(input: { playerId: string; lat: number; lng: number }, db?): Promise<CrateView[]>
-// Spawns up to the cap and returns ALL the player's active crates (new + existing).
-getActiveCrates(playerId: string, db?): Promise<CrateView[]>
-// CrateView = { id, lat, lng, kind, expiresAt: string (ISO) }
+nearbyCrates(input: { lat: number; lng: number; radiusM?: number }, db?): Promise<CrateView[]>
+// Read-only: the world crates around a position (default 2 km, 60 max). Creates nothing, so a ping is
+// one indexed query and no Overpass call.
+// CrateView = { id, lat, lng, kind, expiresAt: string (ISO), city?: string }
+
+// placement (worker only, every CRATE_SEED_INTERVAL_MS)
+seedWorldCrates(opts?: SeedOptions, db?, rng?): Promise<SeedReport>
+crateCountsByCity(db?): Promise<{ city: string; active: number }[]>
 
 // opening (web thread API route)
 openCrate(input: OpenCrateInput, deps: { validateOpen: ValidateOpen; db?: Pool }): Promise<OpenCrateResult>
@@ -78,18 +92,23 @@ openCrate(input: OpenCrateInput, deps: { validateOpen: ValidateOpen; db?: Pool }
 //   { crateId, lat, lng, accuracyM, clientTs, deviceId }           <- from client body
 //   + { playerId, walletAddress, ip }                                <- from server session, NEVER the body
 // OpenCrateResult =
-//   | { ok: true; openingId; replayed: boolean; outcome: 'card'; item: PrizeItemView; prizeStatus: string }
-//   | { ok: true; openingId; replayed: boolean; outcome: 'shards'; shardsAwarded; ticketsAwarded; shards; tickets; downgraded: boolean }
+//   | { ok: true; openingId; replayed: boolean; outcome: 'card'; item: PrizeItemView; prizeStatus: string; ticketSpent: boolean }
+//   | { ok: true; openingId; replayed: boolean; outcome: 'shards'; shardsAwarded; ticketsAwarded; shards; tickets; downgraded: boolean; budgetCapped: boolean; ticketSpent: boolean }
 //   | { ok: false; code: OpenRejectCode; message: string }
-// OpenRejectCode = 'not_found' | 'not_yours' | 'expired' | 'already_opened' | 'too_far' | 'frozen' | 'anticheat' | 'invalid_input'
+// OpenRejectCode = 'not_found' | 'taken' | 'expired' | 'already_opened' | 'daily_limit' | 'too_far' | 'frozen' | 'anticheat' | 'invalid_input'
+// 'taken' = another player opened this crate first (the normal way to lose a race); the loser keeps their
+// daily open and gets their anti-cheat cooldown back.
 // Re-sending an open for a crate the same player already opened returns the original result with replayed=true.
 
-useTicket(input: { playerId: string; lat: number; lng: number }, db?): Promise<{ ok: true; crate: CrateView; tickets: number } | { ok: false; code: 'no_tickets' | 'frozen' }>
+getAllowance(playerId: string, db?): Promise<PlayerAllowance>
+// { freeOpensLeft, tickets, opensUsedToday, nextOpenCostsTicket, opensLeft } — read-only; the allowance is
+// claimed inside openCrate's transaction.
 
 // history / stats (web thread)
 getPlayerHistory(playerId: string, opts?: { limit?: number }, db?): Promise<OpeningView[]>
 getVaultStats(db?): Promise<VaultStats>     // counts + value by tier and status, total sent, recent winners (wallet shortened)
-getPublicOdds(kind?: 'standard' | 'ticket', db?): Promise<OddsView[]>   // effective odds after zero-inventory adjustment
+getPublicOdds(kind?: 'standard' | 'ticket', db?): Promise<OddsView[]>   // effective odds after the zero-inventory and daily-budget adjustments
+dailyBudget(db?, caps?): Promise<DailyBudget>   // { cardsAwarded, valueAwardedUsd, cardsLeft, valueLeftUsd, exhausted }
 
 // admin (web admin page)
 addInventoryItem(input: NewInventoryItem, db?): Promise<{ id: string }>   // tier derived from value_usd unless given
@@ -127,18 +146,21 @@ interface OpenContext {
 }
 
 type ValidateResult =
-  | { ok: true }
+  | { ok: true; release?: () => Promise<void> }   // core calls release() when the open doesn't happen
   | { ok: false; reason: string; flag?: { reason: string; details?: Record<string, unknown> } };
 ```
 
 Ordering inside `openCrate`:
-1. zod-validate input, load crate + player (no locks). Reject not_found / not_yours / frozen / expired / already_opened (or replay).
+1. zod-validate input, load crate + player (no locks). Reject not_found / taken / frozen / expired (or replay).
 2. Reject `too_far` if distance > 40 m (core owns this check).
 3. Call `validateOpen(ctx)`. If `{ok:false}`, core writes `flag` (if present) to `player_flags` and returns `code: 'anticheat'`.
    Anti-cheat owns: movement plausibility vs pings, cooldowns, per-wallet/device daily open caps, sybil, IP/device clustering.
    `validateOpen` runs outside the transaction, so make cooldowns race-free yourself (e.g. Redis `SET NX PX`).
-4. Transaction: lock player row and crate row (`FOR UPDATE`), re-check status/expiry/distance, roll, reserve inventory
-   (`FOR UPDATE SKIP LOCKED`), insert `crate_openings`, update balances, mark crate opened, enqueue prize send. Commit.
+4. Transaction: lock player row then crate row (`FOR UPDATE`), re-check status/expiry/distance, return `raced`
+   if another player got it (nothing written, so the loser keeps their allowance), claim the daily allowance
+   (free open, else a ticket, else `daily_limit`), roll, reserve inventory (`FOR UPDATE SKIP LOCKED`) and book
+   the card against the day's budget under a SAVEPOINT, insert `crate_openings`, update balances, mark the crate
+   opened with `claimed_by_player_id`, enqueue prize send. Commit.
 
 `validateOpen` must not throw for normal rejections. If it throws, the open fails closed (500, nothing awarded).
 
@@ -175,6 +197,7 @@ build a new tx. Only then broadcast. Also check the hot wallet still owns `nftMi
 
 ## Open items
 
-- Ticket use (spawns a better-odds ticket crate) is our default guess at Collect's mechanic.
-- Walkability (OSM) filtering is not done; crates can spawn in water or on highways.
+- A ticket buying one extra open a day (at the better `ticket` odds) is our own call, not a copy of Collect's mechanic.
+- A player with no crate within walking distance has nothing to do that day. That is the trade for a payout
+  that doesn't grow with the player count; more crates per city is the dial.
 - Starting odds live in `odds_config` seed data in 0001_init.sql and in docs/odds.md.

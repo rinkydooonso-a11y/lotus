@@ -12,22 +12,22 @@ export const metadata: Metadata = { title: "How CardQuest works", description: "
 
 const steps = [
   ["Connect a wallet", "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction."],
-  ["Head out in a launch city", `Crates land on streets, paths and parks in ${SERVICE_CITIES.length} cities. Your first one spawns right where you stand.`],
+  ["Head out in a launch city", `Crates sit on streets, paths and parks across ${SERVICE_CITIES.length} cities. They are shared: whoever gets there first takes it.`],
   ["Walk up to a crate", "Get within about 40 metres and it unlocks. We check your movement, so no teleporting."],
   ["Open it", "You get a graded card, or shards toward a ticket. Cards go straight to your wallet."],
 ];
 const rules = [
   ["One player, one account", "Multiple accounts or shared wallets get frozen."],
   ["Real movement only", "Spoofed GPS, emulators and impossible speeds are flagged automatically."],
-  ["Daily limits", "There's a cap on crates per day so everyone gets a fair go."],
+  ["One open a day", "Everyone gets one free open each day. Tickets earned from shards buy you more."],
   ["Unsent prizes can be held", "If an account is under review, its pending cards wait until it's cleared."],
   ["Play safe", "Watch where you're walking. Never go somewhere unsafe or off-limits for a crate."],
 ];
 const faq = [
   ["Is it free to play?", "Yes. Connecting a wallet and opening crates costs nothing."],
   ["Are the cards real?", "Yes. Each prize is a Collector Crypt NFT backed by a professionally graded physical card held in a vault. Keep it, sell it, or redeem it on Collector Crypt to have the card shipped."],
-  ["What are shards and tickets?", "Crates without a card pay 1 to 3 shards. 10 shards make a ticket, up to 5. Ticket crates have much better odds."],
-  ["Why can't I see crates?", `Crates only spawn inside the ${SERVICE_CITIES.length} launch cities right now. More open as the vault grows.`],
+  ["What are shards and tickets?", "Crates without a card pay 1 to 3 shards. 10 shards make a ticket, up to 5. Spending a ticket buys another open the same day, at much better odds."],
+  ["Why can't I see crates?", `Crates are only placed inside the ${SERVICE_CITIES.length} launch cities right now, and one near you may already have been opened. More cities open as the vault grows.`],
   ["Is CardQuest affiliated with Collector Crypt?", "No. We buy cards like any customer. Redemption and shipping happen on their site."],
 ];
 
@@ -46,7 +46,7 @@ export default function How() {
       </section>
 
       <div className="phones">
-        <Phone caption="Crates land around you"><div className="ph-map"><span className="ph-crate" style={{ left: "30%", top: "34%" }}><CrateGlyph size={40} /></span><span className="ph-crate" style={{ left: "66%", top: "50%" }}><CrateGlyph size={40} gold /></span><span className="ph-you" /></div></Phone>
+        <Phone caption="Crates waiting nearby"><div className="ph-map"><span className="ph-crate" style={{ left: "30%", top: "34%" }}><CrateGlyph size={40} /></span><span className="ph-crate" style={{ left: "66%", top: "50%" }}><CrateGlyph size={40} gold /></span><span className="ph-you" /></div></Phone>
         <Phone caption="Walk up and open one"><div className="ph-open"><span className="ph-burst" /><Mark size={84} /></div></Phone>
         <Phone caption="A real slab, in your wallet"><div className="ph-card"><CardThumb tier="rare" grade="PSA 10" size="md" /></div></Phone>
       </div>

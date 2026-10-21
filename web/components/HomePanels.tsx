@@ -80,8 +80,8 @@ function Numbers({ feed, vault }: { feed: Feed | null; vault: VaultStats | null 
 
 const STEPS = [
   { t: "Connect a wallet", d: "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction.", art: "wallet" },
-  { t: "Walk to a crate", d: `Crates drop on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within 40 metres and it unlocks.`, art: "walk" },
-  { t: "Open it", d: "Pull a graded card, sent straight to your wallet. No card this time? You get shards toward a ticket crate.", art: "open" },
+  { t: "Walk to a crate", d: `Crates sit on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within 40 metres to open one. First to arrive takes it.`, art: "walk" },
+  { t: "Open it", d: "One free open a day. Pull a graded card, sent straight to your wallet, or shards that add up to tickets for extra opens.", art: "open" },
 ] as const;
 
 function StepArt({ art }: { art: (typeof STEPS)[number]["art"] }) {
