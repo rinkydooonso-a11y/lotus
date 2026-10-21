@@ -54,3 +54,9 @@ The order matters: money-moving pieces switch on last, and the confirmation phra
 ## 8. First day watch list
 
 `/api/health`, `/admin` flagged players, prize sends stuck in `failed`, hot wallet SOL balance, Helius and Upstash usage. Stop switches are in `docs/rollback-runbook.md`.
+
+## Pinned card buyer values (verified on chain via DAS)
+
+- `BUY_COLLECTION_ADDRESS` = `CCryptWBYktukHDQ2vHGtVcmtjXxYzvw8XNVY64YN2Yf` (verified collection "Collector Crypt", about 58,226 assets).
+- `BUY_UPDATE_AUTHORITY` = `DQPERZ9e86pNJ4mhUnCEP8V75yxZofsipoVrRWT5Wdxd` (the authority on every asset sampled).
+- Still needed before the buyer runs: `MAGIC_EDEN_API_KEY`, so the buy instruction allowlist check can run.
