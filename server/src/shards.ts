@@ -1,7 +1,7 @@
 import { GAME } from './config';
 
 /**
- * Adds shards and converts every 10 into a ticket while tickets < max.
+ * Adds shards and converts every GAME.shardsPerTicket into a ticket while tickets < max.
  * Leftover shards stay and convert after a ticket is spent (see convertShards).
  */
 export function applyShards(shards: number, tickets: number, add: number) {

@@ -45,13 +45,13 @@ export function HeroCopy() {
     <div className="hero-copy">
       <p className="hero-live"><span className="live-dot" />Live in {SERVICE_CITIES.length} cities</p>
       <h1 className="hero-title">Graded cards are dropping in <CitySwap /></h1>
-      <p className="hero-lede">Crates land on the streets around you. Walk to one, open it on your phone, and a real graded card could be yours.</p>
+      <p className="hero-lede">Crates are hidden on the streets of twelve cities. Find one before anybody else does, open it on your phone, and a real graded card could be yours.</p>
       {walletBrowser && !user ? <WalletBrowserNotice /> : (
         <div className="hero-actions">
           {!loading && !user && <ConnectButton />}
           {user && balances && (
             <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
-              <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ 10 shards</small></span>
+              <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ {balances.shardsPerTicket} shards</small></span>
               <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ 5 tickets</small></span>
             </Link>
           )}

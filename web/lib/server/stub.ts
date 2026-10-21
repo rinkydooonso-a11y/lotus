@@ -10,6 +10,8 @@ interface PlayerState { shards: number; tickets: number; history: HistoryEntry[]
 const g = globalThis as unknown as { __lotusStub?: { players: Map<string, PlayerState>; byWallet: Map<string, string>; crates: Map<string, Crate>; odds: OddsRow[]; inventory: AdminInventoryItem[] } };
 const db = (g.__lotusStub ??= <NonNullable<typeof g.__lotusStub>>{
   players: new Map(), byWallet: new Map(), crates: new Map(),
+  // Deliberately far more generous than the real 1% (see db/migrations/0008): dev mode is for seeing
+  // the card reveal work, not for honest odds.
   odds: <OddsRow[]>[{ tier: "shards", weight: 850000 }, { tier: "common", weight: 90000 }, { tier: "uncommon", weight: 40000 }, { tier: "rare", weight: 18000 }, { tier: "grail", weight: 2000 }],
   inventory: [
     { id: "i1", nftMint: "DevMint1111111111111111111111111111111111", cardName: "Charizard Base Set Holo", grade: "PSA 7", valueUsd: 420, tier: "grail", status: "available" },
@@ -19,10 +21,15 @@ const db = (g.__lotusStub ??= <NonNullable<typeof g.__lotusStub>>{
     { id: "i5", nftMint: "DevMint5555555555555555555555555555555555", cardName: "Eevee Jungle", grade: "CGC 9", valueUsd: 14, tier: "common", status: "available" },
   ],
 });
-// Mirrors the real rules: one free open per UTC day, then one per banked ticket.
-const FREE_OPENS_PER_DAY = 1;
-/** World crates kept alive near wherever a dev is standing, in place of the seeder worker. */
-const CRATES_NEARBY = 8;
+// Mirrors the real rules: ten free opens per UTC day, then one per banked ticket.
+const FREE_OPENS_PER_DAY = 10;
+const SHARDS_PER_TICKET = 25;
+/**
+ * Dev mode only: crates kept alive near wherever a dev is standing, standing in for the seeder
+ * worker so the map isn't empty without Postgres or Overpass. The real game never places a crate
+ * because a player turned up — see server/src/crates.ts.
+ */
+const CRATES_NEARBY = 12;
 const NEARBY_RADIUS_M = 1500;
 const SPACING_M = 120;
 const TIERS: Tier[] = ["common", "uncommon", "rare", "grail"];
@@ -110,7 +117,7 @@ export const stubServer: GameServer = {
     // The free open of the day, else a ticket.
     const free = p.freeUsed < FREE_OPENS_PER_DAY;
     if (!free && p.tickets < 1) {
-      return { kind: "rejected", code: "daily_limit", message: "That's your open for today. Bank 10 shards for a ticket and you can open another." };
+      return { kind: "rejected", code: "daily_limit", message: `That's all ${FREE_OPENS_PER_DAY} of today's opens. Bank ${SHARDS_PER_TICKET} shards for a ticket and you can open another.` };
     }
     if (free) p.freeUsed++;
     else p.tickets--;
@@ -125,8 +132,8 @@ export const stubServer: GameServer = {
     } else {
       const shards = 1 + randomInt(4);
       p.shards += shards;
-      const gained = Math.floor(p.shards / 10);
-      p.shards -= gained * 10;
+      const gained = Math.min(5 - p.tickets, Math.floor(p.shards / SHARDS_PER_TICKET));
+      p.shards -= gained * SHARDS_PER_TICKET;
       p.tickets += gained;
       result = { kind: "shards", shards, ticketsGained: gained, shardsTotal: p.shards, ticketsTotal: p.tickets };
     }
@@ -142,6 +149,8 @@ export const stubServer: GameServer = {
       freeOpensLeft,
       nextOpenCostsTicket: freeOpensLeft === 0,
       opensLeft: freeOpensLeft + p.tickets,
+      freeOpensPerDay: FREE_OPENS_PER_DAY,
+      shardsPerTicket: SHARDS_PER_TICKET,
     };
   },
   async history(playerId) { return player(playerId).history.slice(0, 100); },

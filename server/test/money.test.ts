@@ -4,6 +4,8 @@ import { openCrate } from '../src/openCrate';
 import { claimNextPrizeSend, markPrizeFailed, markPrizeSent, recordSubmittedSignature } from '../src/prizeQueue';
 import { freezePlayer, unfreezePlayer } from '../src/admin';
 import { nearbyCrates, seedWorldCrates } from '../src/crates';
+import { loadOdds } from '../src/odds';
+import { ROLL_TIERS, type CrateKind } from '../src/types';
 import { getAllowance } from '../src/tickets';
 import {
   addCards, allow, crateAt, forcedRng, giveTickets, LAT, LNG, newPlayer, noAreaLoader, plazaLoader,
@@ -27,6 +29,14 @@ const deps = (rng?: number) => ({
   db: pool,
   ...(rng === undefined ? {} : { rng: forcedRng(rng) }),
 });
+
+/**
+ * Burns the day's free opens so the next open has to spend a ticket. Each one pays
+ * shardsPerEmptyMin (forcedRng returns min), which stays well under a ticket's worth.
+ */
+const useAllFreeOpens = async (p: { playerId: string; address: string }) => {
+  for (let i = 0; i < GAME.freeOpensPerDay; i++) await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS));
+};
 
 beforeEach(reset);
 afterAll(() => pool.end());
@@ -84,17 +94,23 @@ describe('shared crates', () => {
   });
 });
 
-describe('one open a day', () => {
-  it('allows the free open and refuses the next one with no ticket', async () => {
+describe('the daily open allowance', () => {
+  it('allows every free open of the day and refuses the next one with no ticket', async () => {
     const p = await newPlayer();
-    expect(await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS))).toMatchObject({ ok: true, ticketSpent: false });
+    for (let i = 0; i < GAME.freeOpensPerDay; i++) {
+      expect(await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS))).toMatchObject({ ok: true, ticketSpent: false });
+    }
 
     const spare = await crateAt();
     expect(await openCrate(req(spare, p), deps(ROLL_SHARDS))).toMatchObject({ ok: false, code: 'daily_limit' });
 
-    expect((await pool.query(`SELECT count(*)::int AS n FROM crate_openings`)).rows[0].n).toBe(1);
+    expect((await pool.query(`SELECT count(*)::int AS n FROM crate_openings`)).rows[0].n).toBe(GAME.freeOpensPerDay);
     const day = await pool.query(`SELECT opens_used, free_used, tickets_used FROM player_open_days`);
-    expect(day.rows[0]).toMatchObject({ opens_used: 1, free_used: 1, tickets_used: 0 });
+    expect(day.rows[0]).toMatchObject({
+      opens_used: GAME.freeOpensPerDay,
+      free_used: GAME.freeOpensPerDay,
+      tickets_used: 0,
+    });
     // The refused open leaves the crate on the map for somebody else.
     expect((await pool.query(`SELECT status FROM crates WHERE id = $1`, [spare])).rows[0].status).toBe('active');
   });
@@ -103,36 +119,42 @@ describe('one open a day', () => {
     await addCards(1);
     const p = await newPlayer();
     await giveTickets(p.playerId, 1);
+    await useAllFreeOpens(p);
 
-    await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS)); // free open
-    // 30_000 is a common on the standard odds but a rare on the ticket odds, so a card here proves
-    // which table was used: with only commons in the vault the rare tier is zeroed and pays shards.
-    const second = await openCrate(req(await crateAt(), p), deps(ROLL_TICKET_COMMON));
-    expect(second).toMatchObject({ ok: true, outcome: 'card', ticketSpent: true });
+    // ROLL_TICKET_COMMON is a common on the ticket odds but shards on the standard ones, so a card
+    // here is proof that the ticket table was used.
+    const extra = await openCrate(req(await crateAt(), p), deps(ROLL_TICKET_COMMON));
+    expect(extra).toMatchObject({ ok: true, outcome: 'card', ticketSpent: true });
 
-    const o = await pool.query(`SELECT roll_kind, ticket_spent FROM crate_openings ORDER BY created_at`);
-    expect(o.rows.map((r) => r.roll_kind)).toEqual(['standard', 'ticket']);
+    const o = await pool.query(`SELECT roll_kind, ticket_spent FROM crate_openings WHERE roll_kind = 'ticket'`);
+    expect(o.rows).toHaveLength(1);
+    expect(o.rows[0]).toMatchObject({ ticket_spent: true });
     expect((await pool.query(`SELECT tickets FROM players WHERE id = $1`, [p.playerId])).rows[0].tickets).toBe(0);
     expect((await pool.query(`SELECT count(*)::int AS n FROM ticket_spends`)).rows[0].n).toBe(1);
   });
 
   it('converts banked shards into a ticket, caps tickets at the maximum, and reports the allowance', async () => {
     const p = await newPlayer();
-    await pool.query(`UPDATE players SET shards = 9, tickets = 4 WHERE id = $1`, [p.playerId]);
+    await pool.query(`UPDATE players SET shards = $2, tickets = $3 WHERE id = $1`, [
+      p.playerId, GAME.shardsPerTicket - 1, GAME.maxTickets - 1,
+    ]);
 
     const r1 = await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS));
     expect(r1).toMatchObject({ outcome: 'shards', shardsAwarded: 1, ticketsAwarded: 1, shards: 0, tickets: GAME.maxTickets });
 
-    // Spending a ticket frees room, so banked shards convert on the way through.
-    await pool.query(`UPDATE players SET shards = 12 WHERE id = $1`, [p.playerId]);
+    // Spending a ticket frees room under the cap, so banked shards convert on the way through.
+    for (let i = 1; i < GAME.freeOpensPerDay; i++) await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS));
+    await pool.query(`UPDATE players SET shards = $2 WHERE id = $1`, [p.playerId, GAME.shardsPerTicket + 3]);
     const r2 = await openCrate(req(await crateAt(), p), deps(ROLL_SHARDS));
-    expect(r2).toMatchObject({ outcome: 'shards', ticketSpent: true, ticketsAwarded: 1, shards: 3, tickets: GAME.maxTickets });
+    expect(r2).toMatchObject({ outcome: 'shards', ticketSpent: true, ticketsAwarded: 1, shards: 4, tickets: GAME.maxTickets });
 
     expect(await getAllowance(p.playerId, pool)).toMatchObject({
       freeOpensLeft: 0,
       tickets: GAME.maxTickets,
-      opensUsedToday: 2,
+      opensUsedToday: GAME.freeOpensPerDay + 1,
       nextOpenCostsTicket: true,
+      freeOpensPerDay: GAME.freeOpensPerDay,
+      shardsPerTicket: GAME.shardsPerTicket,
     });
   });
 
@@ -349,5 +371,19 @@ describe('world crate seeder', () => {
     expect((await pool.query(`SELECT count(*)::int AS n FROM crates WHERE status = 'active'`)).rows[0].n).toBe(2);
     await seedWorldCrates({ ...seedOpts, cratesPerCity: 3 }, pool);
     expect((await pool.query(`SELECT count(*)::int AS n FROM crates WHERE status = 'active'`)).rows[0].n).toBe(3);
+  });
+});
+
+describe('published odds', () => {
+  const cardRate = async (kind: CrateKind) => {
+    const w = await loadOdds(kind, pool);
+    const sum = ROLL_TIERS.reduce((s, t) => s + w[t], 0);
+    expect(sum).toBe(GAME.oddsTotal); // a weight typo in a migration would shift every band
+    return (GAME.oddsTotal - w.shards) / GAME.oddsTotal;
+  };
+
+  it('pays a card on 1% of street crates and 5% of ticket opens', async () => {
+    expect(await cardRate('standard')).toBeCloseTo(0.01, 6);
+    expect(await cardRate('ticket')).toBeCloseTo(0.05, 6);
   });
 });

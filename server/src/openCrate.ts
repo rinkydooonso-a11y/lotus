@@ -212,10 +212,11 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
     );
     if (!near.rows[0]?.ok) return reject('too_far', `Get within ${GAME.openRadiusM} m`);
 
-    // 5. Daily allowance. The first open of the UTC day is free; every further open that day spends
-    // a ticket and rolls on the better 'ticket' odds. Both claims are conditional writes, so two
-    // simultaneous opens can't both take the free one or the last ticket. Returning a rejection here
-    // writes nothing: neither statement changes a row when its condition fails.
+    // 5. Daily allowance. The first GAME.freeOpensPerDay opens of the UTC day are free; every
+    // further open that day spends a ticket and rolls on the better 'ticket' odds. Both claims are
+    // conditional writes, so two simultaneous opens can't both take the last free one or the last
+    // ticket. Returning a rejection here writes nothing: neither statement changes a row when its
+    // condition fails.
     const free = await c.query(
       `INSERT INTO player_open_days (player_id, open_day, opens_used, free_used, tickets_used)
        SELECT $1::uuid, ${UTC_DAY}, 1, 1, 0 WHERE 0 < $2::int
@@ -239,7 +240,7 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
       if ((t.rowCount ?? 0) !== 1) {
         return reject(
           'daily_limit',
-          `That's your open for today. Bank ${GAME.shardsPerTicket} shards for a ticket and you can open another.`,
+          `That's all ${GAME.freeOpensPerDay} of today's opens. Bank ${GAME.shardsPerTicket} shards for a ticket and you can open another.`,
         );
       }
       tickets = t.rows[0]!.tickets;

@@ -47,10 +47,10 @@ Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–30
 - Crates are shared. A seeder worker keeps `cratesPerCity` (default 15) alive in each launch city; a crate
   belongs to nobody, any player who reaches it can open it, and opening it takes it off the map for everyone.
   A crate lives `crateTtlMs` (default 12 h) and the seeder replaces the ones that go.
-- Global ceiling of `maxWorldCratesPerDay` (default 250) crates created per UTC day, whatever the per-city target says.
+- Global ceiling of `maxWorldCratesPerDay` (default 1500) crates created per UTC day, whatever the per-city target says.
 - Crates land only on walkable OpenStreetMap ground, never in water, and no two active crates are within
   `crateMinSpacingM` (default 120 m). When Overpass is unavailable nothing is placed.
-- One player gets `freeOpensPerDay` (default 1) free opens a UTC day. Every further open that day spends a
+- One player gets `freeOpensPerDay` (default 10) free opens a UTC day, each rolling a 1% card rate. Every further open that day spends a
   ticket and rolls on the `ticket` odds. Enforced by a conditional write on `player_open_days` inside the
   open transaction, so two simultaneous opens can't both take it.
 - Daily prize budget: `maxCardsPerDay` (10) and `maxCardValueUsdPerDay` (300). A card is booked against
@@ -60,7 +60,7 @@ Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–30
 - Odds: roll `crypto.randomInt(0, 1_000_000)` against `odds_config` for the crate kind. A tier with zero
   available inventory gets weight 0 (its weight flows to shards), and if the reservation still finds nothing
   (race), the result is downgraded to shards.
-- Shards: empty crate pays 1–3 shards (CSPRNG). 10 shards auto-convert into 1 ticket while tickets < 5.
+- Shards: empty crate pays 1–3 shards (CSPRNG). `shardsPerTicket` (25) shards auto-convert into 1 ticket while tickets < 5.
   Extra shards stay in the balance and convert once a ticket is spent.
 - A ticket is spent by opening, not by a button of its own, so it can never be wasted on a crate the player doesn't reach.
 

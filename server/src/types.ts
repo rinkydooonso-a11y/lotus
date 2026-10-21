@@ -32,6 +32,10 @@ export interface PlayerAllowance {
   nextOpenCostsTicket: boolean;
   /** freeOpensLeft + tickets: opens available right now. */
   opensLeft: number;
+  /** The daily allowance itself, so the UI can say "3 of 10 left" without hardcoding 10. */
+  freeOpensPerDay: number;
+  /** Shards one ticket costs, for the same reason. */
+  shardsPerTicket: number;
 }
 
 export interface PlayerSummary {

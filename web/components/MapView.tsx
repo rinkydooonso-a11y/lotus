@@ -9,6 +9,7 @@ import { SERVICE_CITIES } from "@/lib/cities";
 import type { Balances, Crate, OpenResult } from "@/lib/types";
 import { setExploring, useExploring, useFullMap, usePhone } from "@/lib/viewStore";
 import { ResultModal } from "./ResultModal";
+import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconClose, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
@@ -383,7 +384,7 @@ export default function MapView() {
             </div>
             <div className="grow">
               <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
-              <p className={near && canOpen ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : near ? (canOpen ? "You're in range" : "You've used today's open. 10 shards make a ticket.") : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</p>
+              <p className={near && canOpen ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : near ? (canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`) : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</p>
             </div>
             <button className="icon-btn" onClick={() => setSel(null)} aria-label="Close"><IconClose size={16} /></button>
           </div>
@@ -396,7 +397,7 @@ export default function MapView() {
           </button>
         </div>
       )}
-      {result && <ResultModal result={result} onClose={() => setResult(null)} />}
+      {result && <ResultModal result={result} onClose={() => setResult(null)} shardsPerTicket={balances?.shardsPerTicket ?? SHARDS_PER_TICKET} />}
     </div>
   );
 }

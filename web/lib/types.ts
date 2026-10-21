@@ -38,6 +38,9 @@ export interface Balances {
   nextOpenCostsTicket: boolean;
   /** Opens available right now: free opens left plus banked tickets. */
   opensLeft: number;
+  /** The daily allowance and the ticket price, so copy never hardcodes either number. */
+  freeOpensPerDay: number;
+  shardsPerTicket: number;
 }
 
 export interface HistoryEntry {

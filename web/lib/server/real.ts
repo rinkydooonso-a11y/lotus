@@ -49,6 +49,8 @@ export const realServer: GameServer = {
       freeOpensLeft: a.freeOpensLeft,
       nextOpenCostsTicket: a.nextOpenCostsTicket,
       opensLeft: a.opensLeft,
+      freeOpensPerDay: a.freeOpensPerDay,
+      shardsPerTicket: a.shardsPerTicket,
     };
   },
   async history(playerId) {

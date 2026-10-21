@@ -4,7 +4,8 @@ import { getPool, UTC_DAY } from './db';
 import type { PlayerAllowance } from './types';
 
 /**
- * What a player may open right now: one free open per UTC day, then one more open per banked ticket.
+ * What a player may open right now: GAME.freeOpensPerDay free opens per UTC day, then one more open
+ * per banked ticket.
  *
  * Tickets are no longer spent on a button of their own — nothing spawns a private crate any more.
  * They are spent at the moment of opening (see openCrate.ts), so a ticket can never be wasted on a
@@ -29,5 +30,7 @@ export async function getAllowance(playerId: string, db: Pool | PoolClient = get
     /** True when the next open will spend a ticket, so the UI can say so before they tap. */
     nextOpenCostsTicket: freeOpensLeft === 0,
     opensLeft: freeOpensLeft + tickets,
+    freeOpensPerDay: GAME.freeOpensPerDay,
+    shardsPerTicket: GAME.shardsPerTicket,
   };
 }

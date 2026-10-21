@@ -7,6 +7,7 @@ import { CardThumb } from "@/components/CardThumb";
 import { CrateGlyph } from "@/components/Icons";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { LINKS } from "@/lib/links";
+import { CARD_RATE, FREE_OPENS_PER_DAY, MAX_TICKETS, SHARDS_PER_TICKET, TICKET_CARD_RATE } from "@/lib/rules";
 
 export const metadata: Metadata = { title: "How CardQuest works", description: "Walk to crates on the map, open them, and win real graded trading cards from a public vault." };
 
@@ -19,14 +20,15 @@ const steps = [
 const rules = [
   ["One player, one account", "Multiple accounts or shared wallets get frozen."],
   ["Real movement only", "Spoofed GPS, emulators and impossible speeds are flagged automatically."],
-  ["One open a day", "Everyone gets one free open each day. Tickets earned from shards buy you more."],
+  [`${FREE_OPENS_PER_DAY} opens a day`, `Everyone gets ${FREE_OPENS_PER_DAY} free opens each day. Tickets earned from shards buy you more.`],
   ["Unsent prizes can be held", "If an account is under review, its pending cards wait until it's cleared."],
   ["Play safe", "Watch where you're walking. Never go somewhere unsafe or off-limits for a crate."],
 ];
 const faq = [
   ["Is it free to play?", "Yes. Connecting a wallet and opening crates costs nothing."],
   ["Are the cards real?", "Yes. Each prize is a Collector Crypt NFT backed by a professionally graded physical card held in a vault. Keep it, sell it, or redeem it on Collector Crypt to have the card shipped."],
-  ["What are shards and tickets?", "Crates without a card pay 1 to 3 shards. 10 shards make a ticket, up to 5. Spending a ticket buys another open the same day, at much better odds."],
+  ["What are the odds?", `About ${(CARD_RATE * 100).toFixed(0)} in 100 street crates holds a card; a ticket open is about ${(TICKET_CARD_RATE * 100).toFixed(0)} in 100. Live per-tier odds are on the vault page, and they drop to zero for any tier the vault has run out of.`],
+  ["What are shards and tickets?", `Crates without a card pay 1 to 3 shards. ${SHARDS_PER_TICKET} shards make a ticket, up to ${MAX_TICKETS}. Spending a ticket buys another open the same day, at much better odds.`],
   ["Why can't I see crates?", `Crates are only placed inside the ${SERVICE_CITIES.length} launch cities right now, and one near you may already have been opened. More cities open as the vault grows.`],
   ["Is CardQuest affiliated with Collector Crypt?", "No. We buy cards like any customer. Redemption and shipping happen on their site."],
 ];
