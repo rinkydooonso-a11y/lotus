@@ -71,7 +71,6 @@ In Supabase > SQL editor, paste the `INSERT INTO inventory_items` statement prin
    - `NEXT_PUBLIC_SOLANA_CLUSTER` = `devnet`
    - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
    - `HELIUS_RPC_URL` = Helius devnet URL (optional, enables wallet-age checks)
-   - `OVERPASS_URLS` = leave empty for the test (free public mirrors). `WALKABLE_SPAWNS` = leave empty (on); `off` disables the footpath lookup.
 4. Deploy. Open the URL on your phone.
 
 ## 7. Devnet end-to-end test
@@ -98,7 +97,7 @@ Only after step 7 passes. Follow `docs/mainnet-cutover.md`.
 ## Known gaps to decide before launch
 
 - Compressed (Bubblegum) NFTs are not supported by the prize sender; only pNFT, legacy NFT, Core.
-- Walkable-spawn filtering depends on Overpass availability (see `docs/decisions.md`).
+- A crate spot can occasionally land somewhere you can't stand; it expires and is replaced (see `docs/decisions.md`).
 - The default OpenStreetMap tile server is not meant for heavy traffic; set `NEXT_PUBLIC_MAP_STYLE_URL` to a MapTiler or Stadia style before real traffic.
 
 ## Monitoring and backups

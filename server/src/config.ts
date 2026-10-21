@@ -32,8 +32,6 @@ export const GAME = {
   maxWorldCratesPerDay: num('LOTUS_MAX_CRATES_PER_DAY', 1_500),
   /** No two active crates closer than this, so a cluster can't be cleared from one spot. */
   crateMinSpacingM: num('LOTUS_CRATE_SPACING_M', 120),
-  /** Radius searched for walkable ground around each seed anchor. */
-  citySeedRadiusM: 400,
   /** How far from the player crates are sent to the map. */
   nearbyRadiusM: num('LOTUS_NEARBY_RADIUS_M', 2_000),
   /** Opens a player gets for free each UTC day. Every further open that day spends a ticket. */

@@ -16,7 +16,7 @@ The order matters: money-moving pieces switch on last, and the confirmation phra
 - [ ] **Hot wallet**: a brand-new wallet used for nothing else. Back up its seed offline. Fund about 0.1 SOL for fees and move in only a small number of cards (3 to 5, low value). The rest stays in the Squads vault.
 - [ ] **Squads vault** (treasury): created and its addresses recorded (`SQUADS_VAULT_ADDRESS` is the vault, `SQUADS_MULTISIG_ADDRESS` is the multisig account).
 - [ ] **Collections**: the Collector Crypt collection addresses for `PRIZE_COLLECTIONS`.
-- [ ] **Map tiles and Overpass**: a MapTiler or Stadia style URL for `NEXT_PUBLIC_MAP_STYLE_URL`, and your own or a paid Overpass instance for `OVERPASS_URLS` (or `WALKABLE_SPAWNS=off`).
+- [ ] **Map tiles**: the default is OpenFreeMap (free, no key, no request limit, no SLA). Set `NEXT_PUBLIC_MAP_STYLE_URL` to a MapTiler or Stadia style URL if you want a guaranteed service.
 
 ## 3. Data
 
@@ -33,7 +33,7 @@ The order matters: money-moving pieces switch on last, and the confirmation phra
 ## 5. Web (Vercel)
 
 - [ ] `NEXT_PUBLIC_SOLANA_CLUSTER` = `mainnet-beta` (baked in at build time, so redeploy).
-- [ ] `HELIUS_RPC_URL` = mainnet URL. `NEXT_PUBLIC_MAP_STYLE_URL` and `OVERPASS_URLS` from step 2.
+- [ ] `HELIUS_RPC_URL` = mainnet URL. `NEXT_PUBLIC_MAP_STYLE_URL` from step 2, if you set one.
 - [ ] `LOTUS_ADMIN_WALLETS` = your admin wallet(s) only. Redeploy.
 
 ## 6. Workers (Fly secrets), in this order

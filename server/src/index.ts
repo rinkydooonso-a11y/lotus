@@ -10,7 +10,6 @@ export {
   seedWorldCrates,
   expireStaleCrates,
   crateCountsByCity,
-  randomPointInCircle,
   type SeedOptions,
   type SeedReport,
 } from './crates';

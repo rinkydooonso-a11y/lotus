@@ -3,20 +3,22 @@ import { GAME } from './config';
 import { getPool } from './db';
 import { secureRng, type Rng } from './rng';
 import { SERVICE_CITIES, type ServiceCity } from './cities';
+import { spotsFor, type Spot } from './crateSpots';
 import { LatLngSchema } from './schemas';
 import type { CrateView } from './types';
-import { loadAreaFor, pickSpawnPoints, type AreaData, type LatLng } from './walkable';
 
 /**
  * World crates. One shared set per launch city: a crate belongs to nobody, any player who reaches
  * it can open it, and opening it takes it off the map for everyone (see openCrate.ts). Placement is
  * the seeder worker's job, not something a player's location ping triggers, so the number of crates
  * in the world — and with it the most the game can pay out in a day — does not grow with players.
+ *
+ * Spots come from a fixed grid inside each city's core (crateSpots.ts), so seeding makes no network
+ * calls and cannot be stopped by an outage.
  */
 
-const M_PER_DEG_LAT = 111_320;
-/** Crates placed per Overpass lookup. Each lookup covers one ~400 m patch of walkable ground. */
-const CRATES_PER_ANCHOR = 3;
+/** Candidate spots tried per crate still needed. Spots too close to a live crate are skipped. */
+const TRIES_PER_CRATE = 12;
 /** Crates returned to one map view. */
 const NEARBY_LIMIT = 60;
 
@@ -47,7 +49,7 @@ const UTC_DAY_START = `date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 
 
 /**
  * Crates on the map around a position. Read-only: it never creates anything, so a location ping
- * costs one indexed query and no Overpass call.
+ * costs one indexed query and nothing else.
  */
 export async function nearbyCrates(
   input: { lat: number; lng: number; radiusM?: number },
@@ -65,16 +67,6 @@ export async function nearbyCrates(
     [lat, lng, radiusM],
   );
   return r.rows.map(toCrateView);
-}
-
-/** Pure: a point drawn uniformly over the area of the circle (not biased towards the centre). */
-export function randomPointInCircle(center: LatLng, radiusM: number, rng: Rng): LatLng {
-  const r = radiusM * Math.sqrt(rng(0, 1_000_000) / 1_000_000);
-  const theta = (rng(0, 3_600_000) / 3_600_000) * 2 * Math.PI;
-  return {
-    lat: center.lat + (r * Math.cos(theta)) / M_PER_DEG_LAT,
-    lng: center.lng + (r * Math.sin(theta)) / (M_PER_DEG_LAT * Math.cos((center.lat * Math.PI) / 180)),
-  };
 }
 
 /**
@@ -100,9 +92,6 @@ async function insertWorldCrate(
 
 export interface SeedOptions {
   cities?: readonly ServiceCity[];
-  /** Overpass lookups allowed in one tick, across every city. Keeps a tick short and polite. */
-  maxAnchors?: number;
-  areaLoader?: (lat: number, lng: number) => Promise<AreaData | null>;
   /** Defaults to GAME.cratesPerCity. */
   cratesPerCity?: number;
   /** Defaults to GAME.maxWorldCratesPerDay. */
@@ -116,18 +105,23 @@ export interface SeedReport {
   shortfall: number;
   /** Crates still allowed to be created today when the tick finished. */
   budgetLeft: number;
-  /** Anchors skipped because OpenStreetMap data was unavailable. */
-  noAreaData: number;
+  /** Cities where every candidate spot tried was too close to a live crate. */
+  noRoom: number;
+}
+
+/** In place, with the supplied integer source. */
+function shuffle<T>(items: T[], rng: Rng): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = rng(0, i + 1);
+    [items[i], items[j]] = [items[j]!, items[i]!];
+  }
+  return items;
 }
 
 /**
- * Tops every launch city up towards cratesPerCity, within the global per-day ceiling.
- * Run from the worker every few minutes; it converges over several ticks rather than doing
- * everything at once, because each placement needs a (rate limited, cached) Overpass lookup.
- *
- * Crates only ever land on walkable OpenStreetMap ground and never on water. When Overpass is
- * unavailable nothing is placed: an empty patch of map is better than a crate in a lake or on a
- * motorway, and crates already out live for crateTtlMs, which gives the next ticks time to work.
+ * Tops every launch city up to cratesPerCity, within the global per-day ceiling. Run from the
+ * worker every few minutes. Needs only the database: a city is filled from its fixed spot grid, so
+ * a tick finishes the whole job rather than converging over several.
  */
 export async function seedWorldCrates(
   opts: SeedOptions = {},
@@ -135,8 +129,6 @@ export async function seedWorldCrates(
   rng: Rng = secureRng,
 ): Promise<SeedReport> {
   const cities = opts.cities ?? SERVICE_CITIES;
-  const maxAnchors = opts.maxAnchors ?? 8;
-  const load = opts.areaLoader ?? loadAreaFor;
   const target = opts.cratesPerCity ?? GAME.cratesPerCity;
   const maxPerDay = opts.maxPerDay ?? GAME.maxWorldCratesPerDay;
 
@@ -161,38 +153,37 @@ export async function seedWorldCrates(
     byCity: {},
     shortfall: want.reduce((n, w) => n + w.short, 0),
     budgetLeft,
-    noAreaData: 0,
+    noRoom: 0,
   };
 
-  // Round robin over the cities that are short, so one big city can't use up the whole tick.
-  let anchors = 0;
-  while (anchors < maxAnchors && budgetLeft > 0 && want.some((w) => w.short > 0)) {
-    for (const w of want) {
-      if (w.short <= 0) continue;
-      if (anchors >= maxAnchors || budgetLeft <= 0) break;
-      anchors++;
+  // Round robin, one crate per city per pass, so a day-ceiling that runs out part way through is
+  // shared out evenly instead of going to whichever city came first.
+  const queues = new Map<string, Spot[]>();
+  for (const w of want) queues.set(w.city.name, shuffle([...spotsFor(w.city)], rng).slice(0, w.short * TRIES_PER_CRATE));
 
-      const anchor = randomPointInCircle(w.city, w.city.radiusKm * 1_000, rng);
-      const area = await load(anchor.lat, anchor.lng);
-      if (!area) {
-        report.noAreaData++;
+  while (budgetLeft > 0 && want.some((w) => w.short > 0)) {
+    let placedThisPass = false;
+    for (const w of want) {
+      if (w.short <= 0 || budgetLeft <= 0) continue;
+      const queue = queues.get(w.city.name)!;
+      let placed = false;
+      // The spacing check is in the INSERT, so a spot too close to a live crate just returns null.
+      while (!placed && queue.length > 0) {
+        const spot = queue.pop()!;
+        placed = (await insertWorldCrate(db, { ...spot, city: w.city.name })) !== null;
+      }
+      if (!placed) {
+        w.short = 0;
+        report.noRoom++;
         continue;
       }
-      const take = Math.min(w.short, budgetLeft, CRATES_PER_ANCHOR);
-      const points = pickSpawnPoints(area, anchor, take, rng, {
-        minM: 0,
-        maxM: GAME.citySeedRadiusM,
-        spacingM: GAME.crateMinSpacingM,
-      });
-      for (const pt of points) {
-        if (budgetLeft <= 0) break;
-        if (!(await insertWorldCrate(db, { ...pt, city: w.city.name }))) continue;
-        w.short--;
-        budgetLeft--;
-        report.created++;
-        report.byCity[w.city.name] = (report.byCity[w.city.name] ?? 0) + 1;
-      }
+      w.short--;
+      budgetLeft--;
+      report.created++;
+      report.byCity[w.city.name] = (report.byCity[w.city.name] ?? 0) + 1;
+      placedThisPass = true;
     }
+    if (!placedThisPass) break;
   }
   report.budgetLeft = budgetLeft;
   return report;
