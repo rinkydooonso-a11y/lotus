@@ -110,7 +110,9 @@ export function createAntiCheat({ kv, config = loadConfig(), pings = pgPings, fl
       await flagOnce(sink, ctx.playerId, "sybil", { score: syb.score, signals: syb.signals }, now, true);
 
     const c = await consumeOpen(kv, cfg, ctx.walletAddress, ctx.deviceId, now);
-    return c.ok ? { ok: true } : { ok: false, reason: c.reason };
+    // World crates are shared, so an open that passed every check can still not happen (another
+    // player claimed the crate first). Hand core a way to give this quota back when that happens.
+    return c.ok ? { ok: true, release: () => release(kv, cfg, c.reservation) } : { ok: false, reason: c.reason };
   };
 
   return {

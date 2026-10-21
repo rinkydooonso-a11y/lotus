@@ -33,7 +33,7 @@ Rare $75 to $300
 Grail $300+
 
 **5/**
-Empty crate? You get 1 to 3 shards. 10 shards = 1 ticket (up to 5). Ticket crates have much better odds.
+Empty crate? You get 1 to 3 shards. 25 shards = 1 ticket (up to 5). A ticket open has five times the card odds.
 
 **6/**
 Everything is public: the vault and the live odds.

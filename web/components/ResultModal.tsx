@@ -10,13 +10,14 @@ const REJECT_TEXT: Record<string, string> = {
   expired: "This crate expired.",
   already_opened: "This crate was already opened.",
   not_found: "Crate not found.",
-  not_yours: "That crate isn't yours.",
+  taken: "Another collector got to this crate first.",
+  // daily_limit deliberately has no entry: the server's message carries today's actual numbers.
   frozen: "Your account is under review.",
   anticheat: "We couldn't verify your location. Try again in a moment.",
   invalid_input: "Something went wrong. Try again.",
 };
 
-export function ResultModal({ result, onClose }: { result: OpenResult; onClose: () => void }) {
+export function ResultModal({ result, onClose, shardsPerTicket }: { result: OpenResult; onClose: () => void; shardsPerTicket: number }) {
   return (
     <Sheet onClose={onClose} label={result.kind === "card" ? "You pulled a card" : result.kind === "shards" ? "Shards" : "Couldn't open"} center className={`reveal ${result.kind === "card" ? "r-card t-" + result.tier : "r-" + result.kind}`}>
       {result.kind === "card" && (
@@ -36,8 +37,8 @@ export function ResultModal({ result, onClose }: { result: OpenResult; onClose: 
           <h2>+{result.shards} {result.shards === 1 ? "shard" : "shards"}</h2>
           {result.ticketsGained > 0 ? <p className="reveal-note"><Ticket size={18} />That&apos;s a new ticket! You have {result.ticketsTotal}.</p> : (
             <div className="reveal-progress">
-              <i className="bar"><i style={{ width: `${result.shardsTotal * 10}%` }} /></i>
-              <p>{result.shardsTotal} / 10 toward your next ticket</p>
+              <i className="bar"><i style={{ width: `${Math.min(100, (result.shardsTotal / shardsPerTicket) * 100)}%` }} /></i>
+              <p>{result.shardsTotal} / {shardsPerTicket} toward your next ticket</p>
             </div>
           )}
         </>

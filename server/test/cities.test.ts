@@ -1,7 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Pool } from 'pg';
-import { cityFor } from '../src/cities';
-import { spawnCratesNear } from '../src/crates';
+import { describe, expect, it } from 'vitest';
+import { cityFor, SERVICE_CITIES } from '../src/cities';
 
 describe('cityFor', () => {
   it('finds a launch city and rejects places outside every service area', () => {
@@ -10,21 +8,13 @@ describe('cityFor', () => {
     expect(cityFor(40.0821, -74.2097)).toBeNull(); // Lakewood NJ, ~90 km from New York
     expect(cityFor(0, 0)).toBeNull();
   });
-});
 
-describe('spawnCratesNear city gate', () => {
-  afterEach(() => vi.unstubAllEnvs());
-  // Outside the gate it returns before touching the pool, so a dummy pool proves no DB work happens.
-  const noDb = {} as unknown as Pool;
-  const player = '00000000-0000-0000-0000-000000000000';
-
-  it('spawns nothing outside launch cities', async () => {
-    vi.stubEnv('LOTUS_CITY_GATE', 'on');
-    expect(await spawnCratesNear({ playerId: player, lat: 53.3498, lng: -6.2603 }, noDb)).toEqual([]);
-  });
-
-  it('is skipped for admins (anywhere) so the pool is reached', async () => {
-    vi.stubEnv('LOTUS_CITY_GATE', 'on');
-    await expect(spawnCratesNear({ playerId: player, lat: 53.3498, lng: -6.2603, anywhere: true }, noDb)).rejects.toThrow();
+  it('is the only place world crates are seeded, so every city needs a sane radius', () => {
+    expect(SERVICE_CITIES.length).toBeGreaterThan(0);
+    for (const c of SERVICE_CITIES) {
+      expect(c.radiusKm).toBeGreaterThan(1);
+      expect(c.radiusKm).toBeLessThanOrEqual(60);
+      expect(cityFor(c.lat, c.lng)?.name).toBe(c.name);
+    }
   });
 });

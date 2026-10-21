@@ -6,9 +6,10 @@ import { useAuth } from "@/lib/auth/client";
 import { haversineM, OPEN_RADIUS_M } from "@/lib/geo";
 import { deviceId } from "@/lib/device";
 import { SERVICE_CITIES } from "@/lib/cities";
-import type { Crate, OpenResult } from "@/lib/types";
+import type { Balances, Crate, OpenResult } from "@/lib/types";
 import { setExploring, useExploring, useFullMap, usePhone } from "@/lib/viewStore";
 import { ResultModal } from "./ResultModal";
+import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconClose, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
@@ -296,6 +297,7 @@ export default function MapView() {
   const dist = target && fix ? haversineM(target, fix) : null;
   // UI hint only; the server re-checks distance and decides.
   const near = dist !== null && dist <= OPEN_RADIUS_M;
+  const canOpen = balances?.opensLeft !== 0;
   const reach = dist === null ? 0 : near ? 1 : Math.max(0.06, Math.min(1, OPEN_RADIUS_M / dist));
 
   const open = async () => {
@@ -303,27 +305,17 @@ export default function MapView() {
     setOpening(true);
     try {
       const r = await fetch("/api/crates/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ crateId: target.id, ...body(fix) }) });
-      const j = (await r.json().catch(() => ({}))) as { result?: OpenResult; balances?: { shards: number; tickets: number } };
+      const j = (await r.json().catch(() => ({}))) as { result?: OpenResult; balances?: Balances };
       if (j.result) {
         setResult(j.result);
         if (j.balances) setBalances(j.balances);
-        if (j.result.kind !== "rejected" || ["already_opened", "expired", "not_found"].includes(j.result.code)) {
+        // "taken" means somebody else opened it: drop it from the map. "daily_limit" leaves it there.
+        if (j.result.kind !== "rejected" || ["taken", "already_opened", "expired", "not_found"].includes(j.result.code)) {
           setCrates((cs) => cs.filter((c) => c.id !== target.id));
           setSel(null);
         }
       } else setResult({ kind: "rejected", code: "invalid_input", message: "Something went wrong." });
     } finally { setOpening(false); }
-  };
-
-  const useTicket = async () => {
-    if (!fix) return;
-    const r = await fetch("/api/crates/ticket", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(fix)) });
-    const j = (await r.json()) as { ok: boolean; crate?: Crate; tickets?: number };
-    if (j.ok && j.crate) {
-      setCrates((cs) => [...cs, j.crate!]);
-      setSel(j.crate.id);
-      if (balances && j.tickets !== undefined) setBalances({ ...balances, tickets: j.tickets });
-    }
   };
 
   const recenter = () => { if (fix) map.current?.easeTo({ center: [fix.lng, fix.lat], zoom: 17, pitch: tilt ? PITCH_3D : 0 }); };
@@ -355,7 +347,8 @@ export default function MapView() {
         )}
       </div>
       {exploring && <button className="map-close" onClick={() => setExploring(false)} aria-label="Close the map"><IconClose size={16} />Close map</button>}
-      {balances && balances.tickets > 0 && <button className="ticket-fab" onClick={() => void useTicket()}><Ticket size={18} />Use ticket</button>}
+      {/* Tickets are spent by opening, not by a button: the next open after the free one uses one. */}
+      {balances && balances.tickets > 0 && <div className="ticket-fab" role="status"><Ticket size={18} />{balances.tickets} extra {balances.tickets === 1 ? "open" : "opens"}</div>}
 
       {user && geoErr && !(user.isAdmin && !fix) && <div className="map-card"><p className="map-card-line">{geoErr}</p></div>}
       {user && !fix && (
@@ -391,14 +384,20 @@ export default function MapView() {
             </div>
             <div className="grow">
               <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
-              <p className={near ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : near ? "You're in range" : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</p>
+              <p className={near && canOpen ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : near ? (canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`) : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</p>
             </div>
             <button className="icon-btn" onClick={() => setSel(null)} aria-label="Close"><IconClose size={16} /></button>
           </div>
-          <button className={near ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening} onClick={() => void open()}>{opening ? "Opening…" : near ? "Open crate" : "Walk closer"}</button>
+          <button className={near && canOpen ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening || !canOpen} onClick={() => void open()}>
+            {opening ? "Opening…"
+              : !near ? "Walk closer"
+              : !canOpen ? "Come back tomorrow"
+              : balances?.nextOpenCostsTicket ? <><Ticket size={18} />Open with a ticket</>
+              : "Open crate"}
+          </button>
         </div>
       )}
-      {result && <ResultModal result={result} onClose={() => setResult(null)} />}
+      {result && <ResultModal result={result} onClose={() => setResult(null)} shardsPerTicket={balances?.shardsPerTicket ?? SHARDS_PER_TICKET} />}
     </div>
   );
 }

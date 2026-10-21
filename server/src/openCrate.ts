@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { GAME } from './config';
-import { getPool, withTx } from './db';
-import { availableByTier, effectiveWeights, loadOdds, rollTier } from './odds';
+import { getPool, UTC_DAY, withTx } from './db';
+import {
+  availableByTier,
+  claimBudgetSlot,
+  dailyBudget,
+  effectiveWeights,
+  loadOdds,
+  rollTier,
+  type BudgetCaps,
+} from './odds';
 import { enqueuePrizeSend } from './prizeQueue';
 import { secureRng, type Rng } from './rng';
 import { OpenCrateInputSchema, type OpenCrateInput } from './schemas';
@@ -14,13 +22,15 @@ export interface OpenCrateDeps {
   db?: Pool;
   /** Tests only. */
   rng?: Rng;
+  /** Tests only: override the day's prize budget ceilings. */
+  budget?: BudgetCaps;
 }
 
 interface CrateRow {
   id: string;
-  spawned_for_player_id: string;
   kind: CrateKind;
   status: 'active' | 'opened' | 'expired';
+  city: string | null;
   spawned_at: Date;
   expires_at: Date;
   lat: number;
@@ -31,13 +41,26 @@ interface CrateRow {
 
 const reject = (code: OpenRejectCode, message: string): OpenCrateResult => ({ ok: false, code, message });
 
-const CRATE_SQL = `SELECT id, spawned_for_player_id, kind, status, spawned_at, expires_at,
+const TAKEN = 'Another collector got to this crate first';
+
+const CRATE_SQL = `SELECT id, kind, status, city, spawned_at, expires_at,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
        ST_Distance(location, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography) AS distance_m,
        expires_at <= now() AS expired
   FROM crates WHERE id = $1`;
 
-function toItem(r: any): PrizeItemView {
+const RESERVE_SQL = `UPDATE inventory_items SET status = 'reserved', reserved_by_opening_id = $1, reserved_at = now()
+  WHERE status = 'available' AND id = (
+    SELECT id FROM inventory_items WHERE status = 'available' AND tier = $2
+     ORDER BY acquired_at, id LIMIT 1 FOR UPDATE SKIP LOCKED)
+  RETURNING id AS item_id, nft_mint, card_name, grade, value_usd, tier, image_url`;
+
+const OPENING_COLS = `(id, crate_id, player_id, wallet_address, rolled_tier, client_lat, client_lng,
+   client_accuracy_m, distance_m, device_id, ip, roll_kind, ticket_spent,
+   result, downgraded, budget_capped, shards_awarded, tickets_awarded, inventory_item_id, status)`;
+const OPENING_VALUES = `($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`;
+
+function toItem(r: { item_id: string; nft_mint: string; card_name: string; grade: string | null; value_usd: string | number; tier: string; image_url: string | null }): PrizeItemView {
   return {
     id: r.item_id,
     nftMint: r.nft_mint,
@@ -49,10 +72,14 @@ function toItem(r: any): PrizeItemView {
   };
 }
 
-/** Rebuilds the result of an opening that already happened (idempotent retries). */
+/**
+ * Rebuilds the result of an opening that already happened. Returns null when this crate was opened
+ * by somebody else, which on a shared crate is the normal way to lose a race.
+ */
 async function replay(db: Pool | PoolClient, crateId: string, playerId: string): Promise<OpenCrateResult | null> {
   const r = await db.query(
-    `SELECT o.id, o.player_id, o.result, o.downgraded, o.shards_awarded, o.tickets_awarded, o.status,
+    `SELECT o.id, o.player_id, o.result, o.downgraded, o.budget_capped, o.ticket_spent,
+            o.shards_awarded, o.tickets_awarded, o.status,
             p.shards, p.tickets,
             i.id AS item_id, i.nft_mint, i.card_name, i.grade, i.value_usd, i.tier, i.image_url
        FROM crate_openings o JOIN players p ON p.id = o.player_id
@@ -63,7 +90,15 @@ async function replay(db: Pool | PoolClient, crateId: string, playerId: string):
   const o = r.rows[0];
   if (!o || o.player_id !== playerId) return null;
   if (o.result === 'card') {
-    return { ok: true, openingId: o.id, replayed: true, outcome: 'card', item: toItem(o), prizeStatus: o.status };
+    return {
+      ok: true,
+      openingId: o.id,
+      replayed: true,
+      outcome: 'card',
+      item: toItem(o),
+      prizeStatus: o.status,
+      ticketSpent: o.ticket_spent,
+    };
   }
   return {
     ok: true,
@@ -75,13 +110,21 @@ async function replay(db: Pool | PoolClient, crateId: string, playerId: string):
     shards: o.shards,
     tickets: o.tickets,
     downgraded: o.downgraded,
+    budgetCapped: o.budget_capped,
+    ticketSpent: o.ticket_spent,
   };
 }
 
 /**
- * Validates and opens a crate (handoff doc §7). playerId and walletAddress must come from the
- * authenticated session. Never awards a card the vault doesn't hold: the card is reserved with
- * FOR UPDATE SKIP LOCKED in the same transaction as the opening, else the result downgrades to shards.
+ * Validates and opens a world crate. playerId and walletAddress must come from the authenticated
+ * session. Crates are shared, so the two things this has to get right under load are:
+ *
+ *  - One crate, one opening. The crate row is locked FOR UPDATE and crate_openings.crate_id is
+ *    UNIQUE, so of two players reaching for the same crate exactly one wins; the loser is told it
+ *    was taken and keeps their daily open and their anti-cheat cooldown.
+ *  - Never award what we can't pay. A card is reserved with FOR UPDATE SKIP LOCKED and booked
+ *    against the day's prize budget in the same transaction as the opening. If either fails the
+ *    result downgrades to shards.
  */
 export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Promise<OpenCrateResult> {
   const parsed = OpenCrateInputSchema.safeParse(input);
@@ -95,11 +138,10 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
   const pre = await db.query<CrateRow>(CRATE_SQL, [inp.crateId, inp.lat, inp.lng]);
   const crate = pre.rows[0];
   if (!crate) return reject('not_found', 'Crate not found');
-  if (crate.spawned_for_player_id !== inp.playerId) return reject('not_yours', 'This crate belongs to another player');
   if (crate.status === 'opened') {
-    return (await replay(db, crate.id, inp.playerId)) ?? reject('already_opened', 'Crate already opened');
+    return (await replay(db, crate.id, inp.playerId)) ?? reject('taken', TAKEN);
   }
-  if (crate.status === 'expired' || crate.expired) return reject('expired', 'Crate expired');
+  if (crate.status === 'expired' || crate.expired) return reject('expired', 'This crate is gone');
 
   const owner = await db.query<{ status: string }>(
     `SELECT p.status FROM players p JOIN wallets w ON w.player_id = p.id WHERE p.id = $1 AND w.address = $2`,
@@ -141,6 +183,15 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
     }
     return reject('anticheat', verdict.reason);
   }
+  // Losing a race for a shared crate is not the player's fault, so give their cooldown and daily
+  // anti-cheat quota back whenever the open doesn't actually happen.
+  const giveBack = async () => {
+    try {
+      await verdict.release?.();
+    } catch {
+      /* best effort: the quota expires on its own */
+    }
+  };
 
   // 4. The atomic part.
   const result = await withTx(db, async (c): Promise<OpenCrateResult | 'raced'> => {
@@ -154,53 +205,106 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
     const locked = await c.query<CrateRow>(`${CRATE_SQL} FOR UPDATE`, [inp.crateId, inp.lat, inp.lng]);
     const lc = locked.rows[0]!;
     if (lc.status === 'opened') return 'raced';
-    if (lc.status !== 'active' || lc.expired) return reject('expired', 'Crate expired');
+    if (lc.status !== 'active' || lc.expired) return reject('expired', 'This crate is gone');
     const near = await c.query<{ ok: boolean }>(
       `SELECT ST_DWithin(location, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, $4) AS ok FROM crates WHERE id = $1`,
       [inp.crateId, inp.lat, inp.lng, GAME.openRadiusM],
     );
     if (!near.rows[0]?.ok) return reject('too_far', `Get within ${GAME.openRadiusM} m`);
 
-    const weights = effectiveWeights(await loadOdds(lc.kind, c), await availableByTier(c));
-    const rolled = rollTier(weights, rng);
-    const openingId = randomUUID();
+    // 5. Daily allowance. The first GAME.freeOpensPerDay opens of the UTC day are free; every
+    // further open that day spends a ticket and rolls on the better 'ticket' odds. Both claims are
+    // conditional writes, so two simultaneous opens can't both take the last free one or the last
+    // ticket. Returning a rejection here writes nothing: neither statement changes a row when its
+    // condition fails.
+    const free = await c.query(
+      `INSERT INTO player_open_days (player_id, open_day, opens_used, free_used, tickets_used)
+       SELECT $1::uuid, ${UTC_DAY}, 1, 1, 0 WHERE 0 < $2::int
+       ON CONFLICT (player_id, open_day) DO UPDATE
+          SET opens_used = player_open_days.opens_used + 1,
+              free_used = player_open_days.free_used + 1,
+              last_open_at = now()
+        WHERE player_open_days.free_used < $2::int
+       RETURNING free_used`,
+      [inp.playerId, GAME.freeOpensPerDay],
+    );
 
-    let item: any = null;
-    if (rolled !== 'shards') {
-      const res = await c.query(
-        `UPDATE inventory_items SET status = 'reserved', reserved_by_opening_id = $1, reserved_at = now()
-          WHERE status = 'available' AND id = (
-            SELECT id FROM inventory_items WHERE status = 'available' AND tier = $2
-             ORDER BY acquired_at, id LIMIT 1 FOR UPDATE SKIP LOCKED)
-          RETURNING id AS item_id, nft_mint, card_name, grade, value_usd, tier, image_url`,
-        [openingId, rolled],
+    let rollKind: CrateKind = 'standard';
+    let ticketSpent = false;
+    let tickets = player.tickets;
+    if ((free.rowCount ?? 0) !== 1) {
+      const t = await c.query<{ tickets: number }>(
+        'UPDATE players SET tickets = tickets - 1 WHERE id = $1 AND tickets > 0 RETURNING tickets',
+        [inp.playerId],
       );
-      item = res.rows[0] ?? null;
+      if ((t.rowCount ?? 0) !== 1) {
+        return reject(
+          'daily_limit',
+          `That's all ${GAME.freeOpensPerDay} of today's opens. Bank ${GAME.shardsPerTicket} shards for a ticket and you can open another.`,
+        );
+      }
+      tickets = t.rows[0]!.tickets;
+      ticketSpent = true;
+      rollKind = 'ticket';
+      await c.query(
+        `INSERT INTO player_open_days (player_id, open_day, opens_used, free_used, tickets_used)
+         VALUES ($1, ${UTC_DAY}, 1, 0, 1)
+         ON CONFLICT (player_id, open_day) DO UPDATE
+            SET opens_used = player_open_days.opens_used + 1,
+                tickets_used = player_open_days.tickets_used + 1,
+                last_open_at = now()`,
+        [inp.playerId],
+      );
     }
 
-    const common = [openingId, lc.id, inp.playerId, inp.walletAddress, rolled, inp.lat, inp.lng, inp.accuracyM, lc.distance_m, inp.deviceId, ip];
-    const insertOpening = `INSERT INTO crate_openings
-        (id, crate_id, player_id, wallet_address, rolled_tier, client_lat, client_lng, client_accuracy_m, distance_m, device_id, ip,
-         result, downgraded, shards_awarded, tickets_awarded, inventory_item_id, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`;
+    // 6. The roll. Card tiers the vault can't cover, or that the day's budget can't pay for, are
+    // zeroed before the draw, so the published odds never promise what can't be delivered.
+    const budget = await dailyBudget(c, deps.budget);
+    const [base, available] = await Promise.all([loadOdds(rollKind, c), availableByTier(c)]);
+    const rolled = rollTier(effectiveWeights(base, available, { cardsBlocked: budget.exhausted }), rng);
+    const openingId = randomUUID();
+
+    let item: PrizeItemView | null = null;
+    let budgetCapped = budget.exhausted;
+    if (rolled !== 'shards') {
+      // The reservation and the budget booking stand or fall together: if the card would take the
+      // day over its ceiling, the savepoint puts it straight back in the pool.
+      await c.query('SAVEPOINT award');
+      const res = await c.query(RESERVE_SQL, [openingId, rolled]);
+      const row = res.rows[0];
+      if (row && !(await claimBudgetSlot(c, Number(row.value_usd), deps.budget))) {
+        await c.query('ROLLBACK TO SAVEPOINT award');
+        budgetCapped = true;
+      } else {
+        await c.query('RELEASE SAVEPOINT award');
+        item = row ? toItem(row) : null;
+      }
+    }
+
+    const common = [
+      openingId, lc.id, inp.playerId, inp.walletAddress, rolled,
+      inp.lat, inp.lng, inp.accuracyM, lc.distance_m, inp.deviceId, ip,
+      rollKind, ticketSpent,
+    ];
+    const insertOpening = `INSERT INTO crate_openings ${OPENING_COLS} VALUES ${OPENING_VALUES}`;
 
     let out: OpenCrateResult;
     if (item) {
-      await c.query(insertOpening, [...common, 'card', false, 0, 0, item.item_id, 'pending']);
+      await c.query(insertOpening, [...common, 'card', false, false, 0, 0, item.id, 'pending']);
       await enqueuePrizeSend(c, {
         openingId,
-        inventoryItemId: item.item_id,
+        inventoryItemId: item.id,
         playerId: inp.playerId,
-        nftMint: item.nft_mint,
+        nftMint: item.nftMint,
         recipientAddress: inp.walletAddress,
       });
-      out = { ok: true, openingId, replayed: false, outcome: 'card', item: toItem(item), prizeStatus: 'pending' };
+      out = { ok: true, openingId, replayed: false, outcome: 'card', item, prizeStatus: 'pending', ticketSpent };
     } else {
       const downgraded = rolled !== 'shards';
       const award = rng(GAME.shardsPerEmptyMin, GAME.shardsPerEmptyMax + 1);
-      const bal = applyShards(player.shards, player.tickets, award);
+      const bal = applyShards(player.shards, tickets, award);
       await c.query('UPDATE players SET shards = $2, tickets = $3 WHERE id = $1', [inp.playerId, bal.shards, bal.tickets]);
-      await c.query(insertOpening, [...common, 'shards', downgraded, award, bal.ticketsAwarded, null, 'complete']);
+      await c.query(insertOpening, [...common, 'shards', downgraded, budgetCapped, award, bal.ticketsAwarded, null, 'complete']);
       out = {
         ok: true,
         openingId,
@@ -211,14 +315,24 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
         shards: bal.shards,
         tickets: bal.tickets,
         downgraded,
+        budgetCapped,
+        ticketSpent,
       };
     }
-    await c.query(`UPDATE crates SET status = 'opened', opened_at = now() WHERE id = $1`, [lc.id]);
+    if (ticketSpent) {
+      await c.query('INSERT INTO ticket_spends (player_id, opening_id) VALUES ($1, $2)', [inp.playerId, openingId]);
+    }
+    await c.query(
+      `UPDATE crates SET status = 'opened', opened_at = now(), claimed_by_player_id = $2 WHERE id = $1`,
+      [lc.id, inp.playerId],
+    );
     return out;
   });
 
   if (result === 'raced') {
-    return (await replay(db, inp.crateId, inp.playerId)) ?? reject('already_opened', 'Crate already opened');
+    await giveBack();
+    return (await replay(db, inp.crateId, inp.playerId)) ?? reject('taken', TAKEN);
   }
+  if (!result.ok) await giveBack();
   return result;
 }

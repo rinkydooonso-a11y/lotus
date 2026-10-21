@@ -35,8 +35,9 @@ export default function History() {
       <h1>Your pulls.</h1>
       {balances && (
         <div className="stats">
-          <div className="stat"><span>Shards</span><b><Shard size={22} />{balances.shards}<small>/ 10</small></b><i className="bar"><i style={{ width: `${(balances.shards % 10) * 10}%` }} /></i></div>
+          <div className="stat"><span>Shards</span><b><Shard size={22} />{balances.shards}<small>/ {balances.shardsPerTicket}</small></b><i className="bar"><i style={{ width: `${Math.min(100, ((balances.shards % balances.shardsPerTicket) / balances.shardsPerTicket) * 100)}%` }} /></i></div>
           <div className="stat"><span>Tickets</span><b><Ticket size={22} />{balances.tickets}<small>/ 5</small></b></div>
+          <div className="stat"><span>Opens left today</span><b>{balances.opensLeft}<small>/ {balances.freeOpensPerDay}</small></b></div>
           <div className="stat"><span>Cards won</span><b>{rows ? rows.filter((h) => h.result.kind === "card").length : "–"}</b></div>
         </div>
       )}
