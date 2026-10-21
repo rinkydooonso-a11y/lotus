@@ -7,6 +7,7 @@ import { QrCard } from "./QrCard";
 import { CardThumb } from "./CardThumb";
 import { IconChevronLeft, IconChevronRight, IconClose, IconPause, IconPlay, IconReplay } from "./Icons";
 import { LINKS } from "@/lib/links";
+import { FREE_OPENS_PER_DAY } from "@/lib/rules";
 
 /** Open the "How CardQuest works" film from anywhere. */
 export const openFilm = () => window.dispatchEvent(new Event("cq:film"));
@@ -17,8 +18,8 @@ const CH_MS = 5600;
 interface Chapter { name: string; title: string; caption: string; map: boolean; stage: string }
 const CHAPTERS: Chapter[] = [
   { name: "Crates", title: "Cards are dropping on your streets.", caption: "Crates land on sidewalks, paths and parks, and everyone nearby sees the same ones.", map: true, stage: "drops" },
-  { name: "Walk", title: "Walk up to one.", caption: "Get within 40 metres and it unlocks. Everyone gets a daily stack of crates.", map: true, stage: "walk" },
-  { name: "Open", title: "Open it up.", caption: "Every crate rolls for a real card. Some pay shards instead, so keep walking.", map: false, stage: "burst" },
+  { name: "Walk", title: "Walk up to one.", caption: `Get within 40 metres and it unlocks. The first one there takes it, and you get ${FREE_OPENS_PER_DAY} opens a day.`, map: true, stage: "walk" },
+  { name: "Open", title: "Open it up.", caption: "Every crate rolls for a real card. Most pay shards toward a ticket, so keep walking.", map: false, stage: "burst" },
   { name: "Pull", title: "Pull a graded slab.", caption: "Professionally graded, insured, and yours the second it flips.", map: false, stage: "card" },
   { name: "Tiers", title: "Grail down to common.", caption: "Four tiers, one public vault. You can check every card before you walk.", map: false, stage: "tiers" },
   { name: "Keep", title: "It lands in your wallet.", caption: "Keep it, sell it, or redeem it on Collector Crypt and get the slab shipped.", map: false, stage: "wallet" },

@@ -546,13 +546,13 @@ button.group-row:hover,a.group-row:hover{background:rgba(255,255,255,.04)}
 .panel-card.empty{text-align:center}
 .panel-card p{margin:0 auto}
 .panel-card .btn{margin-top:18px}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:8px 0 28px}
+.stats{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:14px;margin:8px 0 28px}
 .stat{padding:20px 22px;border-radius:22px;background:var(--surface-1);box-shadow:inset 0 0 0 1px var(--hair)}
 .stat>span{display:block;color:var(--text-2);font-size:14px;margin-bottom:8px}
 .stat>b{display:flex;align-items:center;gap:8px;font:600 32px/1 var(--display);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .stat>b small{color:var(--text-3);font-size:16px;font-weight:500}
 .stat .bar{margin-top:14px}
-@media(max-width:899px){.stats{grid-template-columns:1fr 1fr}.stats .stat:last-child{grid-column:span 2}}
+@media(max-width:899px){.stats{grid-auto-flow:row;grid-template-columns:1fr 1fr}.stats .stat:last-child:nth-child(odd){grid-column:span 2}}
 .tx-list{list-style:none;margin:16px 0 0;padding:0;background:var(--surface-2);border-radius:18px;overflow:hidden}
 .tx-list li{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:14px 18px;font-size:15px;color:var(--text-2)}
 .tx-list li+li::before{content:"";position:absolute;top:0;left:18px;right:0;height:1px;background:var(--hair)}

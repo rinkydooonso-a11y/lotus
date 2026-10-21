@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { setCity } from "@/lib/cityStore";
 import { usd } from "@/lib/format";
+import { FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
 import type { Feed, VaultStats } from "@/lib/types";
 import { CitySwap } from "./CitySwap";
 import { ConnectSheet } from "./ConnectSheet";
@@ -52,7 +53,7 @@ export function HeroCopy() {
           {user && balances && (
             <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
               <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ {balances.shardsPerTicket} shards</small></span>
-              <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ 5 tickets</small></span>
+              <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ {MAX_TICKETS} tickets</small></span>
             </Link>
           )}
           <WatchButton label="How it works" />
@@ -80,8 +81,8 @@ function Numbers({ feed, vault }: { feed: Feed | null; vault: VaultStats | null 
 
 const STEPS = [
   { t: "Connect a wallet", d: "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction.", art: "wallet" },
-  { t: "Walk to a crate", d: `Crates drop on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within 40 metres and it unlocks.`, art: "walk" },
-  { t: "Open it", d: "Pull a graded card, sent straight to your wallet. No card this time? You get shards toward a ticket crate.", art: "open" },
+  { t: "Walk to a crate", d: `Crates sit on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within 40 metres to open one. First to arrive takes it.`, art: "walk" },
+  { t: "Open it", d: `${FREE_OPENS_PER_DAY} free opens a day. Pull a graded card, sent straight to your wallet, or shards that add up to tickets for extra opens.`, art: "open" },
 ] as const;
 
 function StepArt({ art }: { art: (typeof STEPS)[number]["art"] }) {
