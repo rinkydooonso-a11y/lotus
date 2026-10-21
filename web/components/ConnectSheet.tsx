@@ -1,9 +1,12 @@
 "use client";
 import { useEffect } from "react";
+import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletReadyState } from "@solana/wallet-adapter-base";
 import { useAuth } from "@/lib/auth/client";
 import { Mark } from "./Logo";
+import { Sheet } from "./Sheet";
+import { IconChevronRight } from "./Icons";
 
 export function ConnectSheet({ onClose }: { onClose?: () => void }) {
   const { wallets, select, connect, wallet, connecting } = useWallet();
@@ -16,31 +19,32 @@ export function ConnectSheet({ onClose }: { onClose?: () => void }) {
     setTimeout(() => { void connect().then(() => onClose?.()).catch(() => undefined); }, 50);
   };
   return (
-    <div className="sheet-back modal" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="grab" />
-        <button className="x" onClick={onClose} aria-label="Close">✕</button>
-        <div className="sheet-mark"><Mark size={44} /></div>
+    <Sheet onClose={onClose} label="Connect a wallet">
+      <div className="sheet-head">
+        <Mark size={48} />
         <h2>Connect a wallet</h2>
-        <p className="muted">Sign a free message to start hunting. No transaction, no fees.</p>
-        <div className="stack">
-          {wallets.map((w) => {
-            // In a phone browser the adapter would reopen the site inside Phantom's browser, where location
-            // doesn't work, so Phantom goes through the deeplink round trip and the player stays here.
-            const viaDeeplink = phantomDeeplink && w.adapter.name === "Phantom";
-            const installed = viaDeeplink || w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable;
-            return (
-              <button key={w.adapter.name} className="row-btn" onClick={() => (viaDeeplink ? connectPhantom() : installed ? pick(w.adapter.name) : window.open(w.adapter.url, "_blank"))}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={w.adapter.icon} alt="" width={28} height={28} />
-                <span>{w.adapter.name}</span>
-                <span className={installed ? "chip ok" : "chip"}>{viaDeeplink ? "Open app" : installed ? (connecting && wallet?.adapter.name === w.adapter.name) || busy ? "Connecting…" : "Detected" : "Install"}</span>
-              </button>
-            );
-          })}
-        </div>
-        {error && <p className="err">{error}</p>}
+        <p>Sign a free message to start hunting. No transaction, no fees.</p>
       </div>
-    </div>
+      <div className="group">
+        {wallets.map((w) => {
+          // In a phone browser the adapter would reopen the site inside Phantom's browser, where location
+          // doesn't work, so Phantom goes through the deeplink round trip and the player stays here.
+          const viaDeeplink = phantomDeeplink && w.adapter.name === "Phantom";
+          const installed = viaDeeplink || w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable;
+          const status = viaDeeplink ? "Open app" : installed ? (connecting && wallet?.adapter.name === w.adapter.name) || busy ? "Connecting…" : "Detected" : "Install";
+          return (
+            <button key={w.adapter.name} className="group-row wallet-row" onClick={() => (viaDeeplink ? connectPhantom() : installed ? pick(w.adapter.name) : window.open(w.adapter.url, "_blank"))}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={w.adapter.icon} alt="" width={32} height={32} />
+              <span className="grow">{w.adapter.name}</span>
+              <span className={installed ? "wallet-status ok" : "wallet-status"}>{status}</span>
+              <IconChevronRight size={16} className="row-chev" />
+            </button>
+          );
+        })}
+      </div>
+      {error && <p className="err">{error}</p>}
+      <p className="sheet-fine">18+ only. By connecting you agree to the <Link href="/terms" onClick={onClose}>Terms of Play</Link>.</p>
+    </Sheet>
   );
 }

@@ -14,8 +14,8 @@ export default async function Stats() {
   return (
     <div className="docs">
       <section className="docs-hero">
-        <p className="eyebrow">Live stats</p>
-        <h1 className="big-number"><em>{n(feed.totals.cardsPulled)}</em> cards pulled by players</h1>
+        <p className="page-kicker"><span className="live-dot" />Live stats</p>
+        <h1 className="big-number"><em>{n(feed.totals.cardsPulled)}</em> cards pulled by players.</h1>
       </section>
 
       <section><h2>Who plays</h2>
@@ -36,14 +36,14 @@ export default async function Stats() {
 
       <section><h2>Recent pulls</h2>
         {feed.recent.length === 0 ? <p>No pulls yet.</p> : (
-          <ul className="pulls">
+          <ul className="list">
             {feed.recent.slice(0, 12).map((p) => (
-              <li key={p.id} className="pull">
-                <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} />
+              <li key={p.id} className="item">
+                <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} size="sm" />
                 <div className="grow">
-                  <div className="pull-name">{p.cardName} {p.grade}</div>
+                  <strong>{p.cardName} {p.grade}</strong>
                   <div className="pull-meta"><span className={`tc-${p.tier}`}>{TIER_LABEL[p.tier]}</span><b>{usd(p.valueUsd)}</b></div>
-                  <div className="pull-by"><span>{p.collector}</span><span className="faint">{timeAgo(p.at)}</span></div>
+                  <div className="pull-by"><span className="mono">{p.collector}</span><span>{timeAgo(p.at)}</span></div>
                 </div>
               </li>
             ))}

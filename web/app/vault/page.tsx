@@ -11,8 +11,9 @@ export default async function Vault() {
   return (
     <div className="docs">
       <section className="docs-hero">
-        <h1>The <em>vault.</em></h1>
-        <p className="docs-lede">Every card you can pull is here, live and public. We never award a card the vault doesn&apos;t hold.</p>
+        <p className="page-kicker">The vault</p>
+        <h1>Every card you can pull.</h1>
+        <p className="docs-lede">All of them are here, live and public. We never award a card the vault doesn&apos;t hold.</p>
       </section>
       <div className="stat-cards three">
         <div className="stat-card"><span className="eyebrow">Cards in vault</span><b>{v.cardsInVault}</b></div>

@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import qrcode from "qrcode-generator";
+import { IconCheck, IconCopy } from "./Icons";
 
 /** "Play on your phone": QR for the current site, so desktop visitors can jump to mobile. */
-export function QrCard({ className = "desk-qr" }: { className?: string }) {
+export function QrCard({ className = "qr-card" }: { className?: string }) {
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
   useEffect(() => setUrl(window.location.origin), []);
@@ -19,10 +20,10 @@ export function QrCard({ className = "desk-qr" }: { className?: string }) {
   return (
     <div className={className}>
       <div className="qr" aria-label="QR code to open CardQuest on your phone" dangerouslySetInnerHTML={{ __html: svg }} />
-      <div className="desk-qr-text">
+      <div className="qr-text">
         <b>Play on your phone</b>
         <p>Scan it with your phone&apos;s camera to play in the browser. No download needed.</p>
-        {host && <button className="copy-link" onClick={copy}>{copied ? "Copied" : host}<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" strokeWidth="2" /></svg></button>}
+        {host && <button className="copy-link" onClick={copy}>{copied ? "Copied" : host}{copied ? <IconCheck size={14} /> : <IconCopy size={14} />}</button>}
       </div>
     </div>
   );
