@@ -24,14 +24,6 @@ export function getPool(): Pool {
   return pool;
 }
 
-/**
- * SQL fragments for "today" in UTC, so every daily counter and ledger agrees on where a day starts
- * whatever the database server's own timezone is. UTC_DAY is a date (a key in the per-day tables),
- * UTC_DAY_START a timestamptz (for created_at comparisons).
- */
-export const UTC_DAY = `(now() AT TIME ZONE 'UTC')::date`;
-export const UTC_DAY_START = `date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
-
 const TX_STATEMENT_TIMEOUT_MS = Math.max(1000, Math.floor(Number(process.env.PG_TX_TIMEOUT_MS) || 10_000));
 
 /**

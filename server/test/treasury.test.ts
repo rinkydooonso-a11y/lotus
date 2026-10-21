@@ -19,7 +19,7 @@ describe('vault cards', () => {
     expect(item.rows[0]).toEqual({ status: 'withheld', location: 'vault' });
 
     const p = await newPlayer();
-    const r = await openCrate(req(await crateAt(), p), { validateOpen: allow, db: pool, rng: forcedRng(ROLL_COMMON) });
+    const r = await openCrate(req(await crateAt(p.playerId), p), { validateOpen: allow, db: pool, rng: forcedRng(ROLL_COMMON) });
     expect(r).toMatchObject({ ok: true, outcome: 'shards' });
   });
 

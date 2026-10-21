@@ -66,7 +66,7 @@ export function PullsShowcase({ feed }: { feed: Feed | null }) {
                 <p className="shelf-sub"><span className={`tier-name tc-${p.tier}`}>{TIER_LABEL[p.tier]}</span><span>{p.grade}</span></p>
                 <p className="shelf-val num">{usd(p.valueUsd)}</p>
                 <p className="shelf-by"><span className="mono">{p.collector}</span><span>{timeAgo(p.at)}</span></p>
-                <span className={p.crateKind === "ticket" ? "tag gold" : "tag"}>{p.crateKind === "ticket" ? "Ticket open" : "Street crate"}</span>
+                <span className={p.crateKind === "ticket" ? "tag gold" : "tag"}>{p.crateKind === "ticket" ? "Ticket crate" : "Street crate"}</span>
               </div>
             </li>
           ))}

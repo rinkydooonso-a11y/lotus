@@ -18,20 +18,6 @@ export interface CrateView {
   lng: number;
   kind: CrateKind;
   expiresAt: string;
-  /** Launch city this world crate belongs to. Absent on the retired per-player crates. */
-  city?: string;
-}
-
-/** What a player may open today. See tickets.ts. */
-export interface PlayerAllowance {
-  /** Free opens left in the current UTC day. */
-  freeOpensLeft: number;
-  /** Banked tickets, each good for one further open today. */
-  tickets: number;
-  opensUsedToday: number;
-  nextOpenCostsTicket: boolean;
-  /** freeOpensLeft + tickets: opens available right now. */
-  opensLeft: number;
 }
 
 export interface PlayerSummary {
@@ -65,12 +51,9 @@ export interface PrizeItemView {
 
 export type OpenRejectCode =
   | 'not_found'
-  /** Someone else opened this crate first. Normal on a shared crate. */
-  | 'taken'
+  | 'not_yours'
   | 'expired'
   | 'already_opened'
-  /** No free open left today and no ticket to spend. */
-  | 'daily_limit'
   | 'too_far'
   | 'frozen'
   | 'anticheat'
@@ -84,8 +67,6 @@ export type OpenCrateResult =
       outcome: 'card';
       item: PrizeItemView;
       prizeStatus: OpeningStatus;
-      /** This open spent a ticket (it was not the player's free open of the day). */
-      ticketSpent: boolean;
     }
   | {
       ok: true;
@@ -96,11 +77,7 @@ export type OpenCrateResult =
       ticketsAwarded: number;
       shards: number;
       tickets: number;
-      /** A card tier was rolled but no card could be awarded. */
       downgraded: boolean;
-      /** The day's prize budget is why no card could be awarded. */
-      budgetCapped: boolean;
-      ticketSpent: boolean;
     }
   | { ok: false; code: OpenRejectCode; message: string };
 
@@ -121,15 +98,7 @@ export interface OpenContext {
 }
 
 export type ValidateResult =
-  | {
-      ok: true;
-      /**
-       * Gives back the cooldown and daily quota this check consumed. Core calls it when the open
-       * doesn't happen after all — above all when another player took the crate first, which on a
-       * shared crate must not cost the loser their next 20 seconds.
-       */
-      release?: () => Promise<void>;
-    }
+  | { ok: true }
   | { ok: false; reason: string; flag?: { reason: string; details?: Record<string, unknown> } };
 
 export type ValidateOpen = (ctx: OpenContext) => Promise<ValidateResult>;

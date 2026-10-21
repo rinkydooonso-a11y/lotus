@@ -6,8 +6,8 @@ import type { GameServer } from "./types";
 
 // In-memory stand-in so the UI is fully usable before the real game server exists.
 // Single process only; state resets on restart.
-interface PlayerState { shards: number; tickets: number; history: HistoryEntry[]; day: string; freeUsed: number; opensToday: number; frozen: boolean; wallet: string }
-const g = globalThis as unknown as { __lotusStub?: { players: Map<string, PlayerState>; byWallet: Map<string, string>; crates: Map<string, Crate>; odds: OddsRow[]; inventory: AdminInventoryItem[] } };
+interface PlayerState { shards: number; tickets: number; history: HistoryEntry[]; opensToday: number; frozen: boolean; wallet: string }
+const g = globalThis as unknown as { __lotusStub?: { players: Map<string, PlayerState>; byWallet: Map<string, string>; crates: Map<string, Crate & { playerId: string }>; odds: OddsRow[]; inventory: AdminInventoryItem[] } };
 const db = (g.__lotusStub ??= <NonNullable<typeof g.__lotusStub>>{
   players: new Map(), byWallet: new Map(), crates: new Map(),
   odds: <OddsRow[]>[{ tier: "shards", weight: 850000 }, { tier: "common", weight: 90000 }, { tier: "uncommon", weight: 40000 }, { tier: "rare", weight: 18000 }, { tier: "grail", weight: 2000 }],
@@ -19,44 +19,25 @@ const db = (g.__lotusStub ??= <NonNullable<typeof g.__lotusStub>>{
     { id: "i5", nftMint: "DevMint5555555555555555555555555555555555", cardName: "Eevee Jungle", grade: "CGC 9", valueUsd: 14, tier: "common", status: "available" },
   ],
 });
-// Mirrors the real rules: one free open per UTC day, then one per banked ticket.
-const FREE_OPENS_PER_DAY = 1;
-/** World crates kept alive near wherever a dev is standing, in place of the seeder worker. */
-const CRATES_NEARBY = 8;
-const NEARBY_RADIUS_M = 1500;
-const SPACING_M = 120;
+const DAILY_CAP = 30;
 const TIERS: Tier[] = ["common", "uncommon", "rare", "grail"];
-
-const utcDay = () => new Date().toISOString().slice(0, 10);
 
 function player(id: string): PlayerState {
   const p = db.players.get(id);
   if (!p) throw new Error("unknown player");
   return p;
 }
-/** Rolls the player's daily allowance over when the UTC day changes. */
-function today(p: PlayerState): PlayerState {
-  const d = utcDay();
-  if (p.day !== d) { p.day = d; p.freeUsed = 0; p.opensToday = 0; }
-  return p;
-}
-const live = () => [...db.crates.values()].filter((c) => new Date(c.expiresAt) > new Date());
-
-/**
- * Stands in for the seeder: tops the shared map up around this position. Crates belong to nobody,
- * so a second dev player sees (and can race for) the same ones.
- */
-function seedAround(lat: number, lng: number): void {
-  const near = live().filter((c) => haversineM(c, { lat, lng }) < NEARBY_RADIUS_M);
-  for (let i = near.length; i < CRATES_NEARBY; i++) {
-    const dist = 60 + randomInt(Math.round(NEARBY_RADIUS_M * 0.6));
+function spawnAround(playerId: string, lat: number, lng: number): void {
+  const mine = [...db.crates.values()].filter((c) => c.playerId === playerId && new Date(c.expiresAt) > new Date());
+  const want = 6 - mine.length;
+  for (let i = 0; i < want; i++) {
+    // first crate sits at the player's feet (GoCollect pattern); others 30-400m away
+    const dist = mine.length === 0 && i === 0 ? 8 : 30 + randomInt(370);
     const bearing = (randomInt(3600) / 10) * (Math.PI / 180);
     const dLat = (dist * Math.cos(bearing)) / 111320;
     const dLng = (dist * Math.sin(bearing)) / (111320 * Math.cos((lat * Math.PI) / 180));
-    const at = { lat: lat + dLat, lng: lng + dLng };
-    if (live().some((c) => haversineM(c, at) < SPACING_M)) continue;
     const id = randomUUID();
-    db.crates.set(id, { id, ...at, expiresAt: new Date(Date.now() + 12 * 3600_000).toISOString(), kind: "standard", city: "Dev" });
+    db.crates.set(id, { id, playerId, lat: lat + dLat, lng: lng + dLng, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), kind: "standard" });
   }
 }
 // Demo pulls so the feed isn't empty in stub mode; real pulls from this process are added on top.
@@ -88,32 +69,27 @@ export const stubServer: GameServer = {
     if (!id) {
       id = randomUUID();
       db.byWallet.set(address, id);
-      db.players.set(id, { shards: 0, tickets: 0, history: [], day: utcDay(), freeUsed: 0, opensToday: 0, frozen: false, wallet: address });
+      db.players.set(id, { shards: 0, tickets: 0, history: [], opensToday: 0, frozen: false, wallet: address });
     }
     return id;
   },
   async nearbyCrates(playerId, ping) {
     player(playerId);
-    // Crates only exist inside a launch city, same as the real seeder.
+    // Same launch-city gate as the real server.
     const inCity = SERVICE_CITIES.some((c) => haversineM(c, ping) <= c.radiusKm * 1000);
-    if (ping.anywhere || process.env.LOTUS_CITY_GATE === "off" || inCity) seedAround(ping.lat, ping.lng);
-    return live().filter((c) => haversineM(c, ping) < NEARBY_RADIUS_M);
+    if (ping.anywhere || process.env.LOTUS_CITY_GATE === "off" || inCity) spawnAround(playerId, ping.lat, ping.lng);
+    return [...db.crates.values()]
+      .filter((c) => c.playerId === playerId && new Date(c.expiresAt) > new Date() && haversineM(c, ping) < 1500)
+      .map(({ playerId: _p, ...c }) => c);
   },
   async openCrate(playerId, crateId, ping) {
-    const p = today(player(playerId));
+    const p = player(playerId);
     const c = db.crates.get(crateId);
     if (p.frozen) return { kind: "rejected", code: "frozen", message: "Account frozen" };
-    if (!c) return { kind: "rejected", code: "taken", message: "Another collector got to this crate first" };
-    if (new Date(c.expiresAt) < new Date()) return { kind: "rejected", code: "expired", message: "This crate is gone" };
+    if (!c || c.playerId !== playerId) return { kind: "rejected", code: "not_found", message: "Crate not found" };
+    if (new Date(c.expiresAt) < new Date()) return { kind: "rejected", code: "expired", message: "Crate expired" };
     if (haversineM(c, ping) > OPEN_RADIUS_M) return { kind: "rejected", code: "too_far", message: "Get closer to the crate" };
-
-    // The free open of the day, else a ticket.
-    const free = p.freeUsed < FREE_OPENS_PER_DAY;
-    if (!free && p.tickets < 1) {
-      return { kind: "rejected", code: "daily_limit", message: "That's your open for today. Bank 10 shards for a ticket and you can open another." };
-    }
-    if (free) p.freeUsed++;
-    else p.tickets--;
+    if (p.opensToday >= DAILY_CAP) return { kind: "rejected", code: "anticheat", message: "Daily limit reached" };
     db.crates.delete(crateId);
     p.opensToday++;
     let r = roll();
@@ -133,16 +109,19 @@ export const stubServer: GameServer = {
     p.history.unshift({ id: randomUUID(), at: new Date().toISOString(), result });
     return result;
   },
+  async useTicket(playerId, ping) {
+    const p = player(playerId);
+    if (p.frozen) return { ok: false, code: "frozen" };
+    if (p.tickets < 1) return { ok: false, code: "no_tickets" };
+    p.tickets--;
+    const id = randomUUID();
+    const crate = { id, lat: ping.lat, lng: ping.lng, kind: "ticket" as const, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() };
+    db.crates.set(id, { ...crate, playerId });
+    return { ok: true, crate, tickets: p.tickets };
+  },
   async balances(playerId) {
-    const p = today(player(playerId));
-    const freeOpensLeft = Math.max(0, FREE_OPENS_PER_DAY - p.freeUsed);
-    return {
-      shards: p.shards,
-      tickets: p.tickets,
-      freeOpensLeft,
-      nextOpenCostsTicket: freeOpensLeft === 0,
-      opensLeft: freeOpensLeft + p.tickets,
-    };
+    const p = player(playerId);
+    return { shards: p.shards, tickets: p.tickets };
   },
   async history(playerId) { return player(playerId).history.slice(0, 100); },
   async vaultStats() {
@@ -182,7 +161,7 @@ export const stubServer: GameServer = {
     async odds() { return db.odds; },
     async setOdds(rows) { db.odds = rows; },
     async flagged(): Promise<FlaggedPlayer[]> {
-      return [...db.players.entries()].filter(([, p]) => p.frozen).map(([playerId, p]) => ({ playerId, wallet: p.wallet, reasons: ["frozen"], frozen: p.frozen, flaggedAt: new Date().toISOString() }));
+      return [...db.players.entries()].filter(([, p]) => p.frozen || p.opensToday >= DAILY_CAP).map(([playerId, p]) => ({ playerId, wallet: p.wallet, reasons: p.frozen ? ["frozen"] : ["daily cap reached"], frozen: p.frozen, flaggedAt: new Date().toISOString() }));
     },
     async setFrozen(playerId, frozen) { player(playerId).frozen = frozen; },
   },

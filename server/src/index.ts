@@ -5,18 +5,10 @@ export { getPool, withTx } from './db';
 export { pgSsl } from './pgSsl';
 export { upsertPlayerByWallet, getPlayer, recordLocationPing, pruneLocationPings } from './players';
 export { SERVICE_CITIES, cityFor } from './cities';
-export {
-  nearbyCrates,
-  seedWorldCrates,
-  expireStaleCrates,
-  crateCountsByCity,
-  randomPointInCircle,
-  type SeedOptions,
-  type SeedReport,
-} from './crates';
+export { spawnCratesNear, getActiveCrates, expireStaleCrates } from './crates';
 export { openCrate, type OpenCrateDeps } from './openCrate';
-export { getAllowance } from './tickets';
-export { getPublicOdds, setOdds, dailyBudget, type DailyBudget } from './odds';
+export { useTicket } from './tickets';
+export { getPublicOdds, setOdds } from './odds';
 export { applyShards, convertShards } from './shards';
 export { getPlayerHistory, getVaultStats } from './stats';
 export {

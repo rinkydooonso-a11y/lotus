@@ -17,7 +17,7 @@ const CH_MS = 5600;
 interface Chapter { name: string; title: string; caption: string; map: boolean; stage: string }
 const CHAPTERS: Chapter[] = [
   { name: "Crates", title: "Cards are dropping on your streets.", caption: "Crates land on sidewalks, paths and parks, and everyone nearby sees the same ones.", map: true, stage: "drops" },
-  { name: "Walk", title: "Walk up to one.", caption: "Get within 40 metres and it unlocks. You get one free open a day, and the first one there takes it.", map: true, stage: "walk" },
+  { name: "Walk", title: "Walk up to one.", caption: "Get within 40 metres and it unlocks. Everyone gets a daily stack of crates.", map: true, stage: "walk" },
   { name: "Open", title: "Open it up.", caption: "Every crate rolls for a real card. Some pay shards instead, so keep walking.", map: false, stage: "burst" },
   { name: "Pull", title: "Pull a graded slab.", caption: "Professionally graded, insured, and yours the second it flips.", map: false, stage: "card" },
   { name: "Tiers", title: "Grail down to common.", caption: "Four tiers, one public vault. You can check every card before you walk.", map: false, stage: "tiers" },

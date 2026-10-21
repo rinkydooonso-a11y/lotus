@@ -7,7 +7,6 @@ import {
   pgSsl,
   pruneLocationPings,
   recordSubmittedSignature,
-  seedWorldCrates,
   setInventoryStatus,
 } from '@lotus/server';
 import { loadConfig, parseSecretKey } from './config.js';
@@ -166,14 +165,6 @@ async function main() {
     loops.push(loop('expire-crates', 60_000, async () => {
       const n = await expireStaleCrates(db);
       if (n) log.info('expired stale crates', { count: n });
-    }, controller.signal));
-    // Keeps the shared map stocked: tops each launch city up towards its target, within the global
-    // per-day ceiling. Placement needs a rate limited OpenStreetMap lookup per patch of ground, so
-    // a tick does a few and the next ones carry on.
-    loops.push(loop('seed-crates', config.CRATE_SEED_INTERVAL_MS, async () => {
-      const r = await seedWorldCrates({ maxAnchors: config.CRATE_SEED_MAX_ANCHORS }, db);
-      if (r.created || r.shortfall) log.info('seeded world crates', { ...r });
-      if (!r.created && r.noAreaData) log.warn('placed no crates: OpenStreetMap data unavailable', { anchors: r.noAreaData });
     }, controller.signal));
     loops.push(loop('prune-pings', 3_600_000, async () => {
       const n = await pruneLocationPings({ retentionDays: config.PING_RETENTION_DAYS }, db);

@@ -1,15 +1,12 @@
-export type RejectCode = "not_found" | "taken" | "expired" | "already_opened" | "daily_limit" | "too_far" | "frozen" | "anticheat" | "invalid_input" | "unavailable";
+export type RejectCode = "not_found" | "not_yours" | "expired" | "already_opened" | "too_far" | "frozen" | "anticheat" | "invalid_input" | "unavailable";
 export type Tier = "common" | "uncommon" | "rare" | "grail";
 
-/** A crate on the map. World crates belong to nobody: the first player to open one takes it. */
 export interface Crate {
   id: string;
   lat: number;
   lng: number;
   expiresAt: string;
   kind: "standard" | "ticket";
-  /** Launch city this crate was placed in. */
-  city?: string;
 }
 
 export interface LocationPing {
@@ -32,12 +29,6 @@ export type OpenResult =
 export interface Balances {
   shards: number;
   tickets: number;
-  /** Free opens left in the current UTC day. */
-  freeOpensLeft: number;
-  /** True when the next open will spend a ticket, so the button can say so before they tap. */
-  nextOpenCostsTicket: boolean;
-  /** Opens available right now: free opens left plus banked tickets. */
-  opensLeft: number;
 }
 
 export interface HistoryEntry {
