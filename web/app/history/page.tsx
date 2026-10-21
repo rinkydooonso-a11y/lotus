@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth/client";
 import type { HistoryEntry } from "@/lib/types";
 import { TIER_LABEL, timeAgo, usd } from "@/lib/format";
 import { CardThumb } from "@/components/CardThumb";
+import { Icon } from "@/components/Icon";
 
 export default function History() {
   const { user, balances, loading } = useAuth();
@@ -20,8 +21,8 @@ export default function History() {
       <h1>Your <em>pulls.</em></h1>
       {balances && (
         <div className="stats">
-          <div className="stat"><span>Shards</span><b>◆ {balances.shards}<small> / 10</small></b><i className="bar"><i style={{ width: `${(balances.shards % 10) * 10}%` }} /></i></div>
-          <div className="stat"><span>Tickets</span><b>🎟 {balances.tickets}<small> / 5</small></b></div>
+          <div className="stat"><span><Icon name="shard" size={14} />Shards</span><b>{balances.shards}<small> / 10</small></b><i className="bar"><i style={{ width: `${(balances.shards % 10) * 10}%` }} /></i></div>
+          <div className="stat"><span className="gold"><Icon name="ticket" size={14} />Tickets</span><b>{balances.tickets}<small> / 5</small></b></div>
           <div className="stat"><span>Cards won</span><b>{rows ? rows.filter((h) => h.result.kind === "card").length : "–"}</b></div>
         </div>
       )}
@@ -29,7 +30,7 @@ export default function History() {
         <ul className="list">
           {rows.map((h) => (
             <li key={h.id} className="item">
-              {h.result.kind === "card" ? <CardThumb tier={h.result.tier} grade={h.result.grade} imageUrl={h.result.imageUrl} /> : <div className="ico">◆</div>}
+              {h.result.kind === "card" ? <CardThumb tier={h.result.tier} grade={h.result.grade} imageUrl={h.result.imageUrl} /> : <div className="ico"><Icon name="shard" size={22} /></div>}
               <div className="grow">
                 {h.result.kind === "card" ? <>
                   <strong>{h.result.cardName}</strong>

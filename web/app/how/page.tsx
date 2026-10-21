@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { WatchButton } from "@/components/HomePanels";
 import { FeeFlow, SiteFooter, TierRows } from "@/components/Docs";
 import { CaChip } from "@/components/CaChip";
@@ -39,7 +40,7 @@ export default function How() {
       <section className="docs-hero">
         <h1>Find a crate. Crack it open. <em>Keep the card.</em></h1>
         <p className="docs-lede">CardQuest is a map game where the prizes are real: professionally graded trading cards from a public vault, sent to your wallet the moment you pull one.</p>
-        <WatchButton />
+        <div className="hero-actions"><Link href="/" className="btn lg">Open the map</Link><WatchButton className="lg" /></div>
       </section>
 
       <div className="phones">

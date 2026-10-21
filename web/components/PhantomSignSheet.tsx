@@ -17,7 +17,7 @@ export function PhantomSignSheet() {
           <>
             <h2>Connected {phantomSign.address.slice(0, 4)}…{phantomSign.address.slice(-4)}</h2>
             <p className="muted sheet-p">One more step: sign a free message in Phantom to log in. No transaction, no fees.</p>
-            <button className="btn wide" disabled={!phantomSign.ready} onClick={continuePhantomSign}>{phantomSign.ready ? "Sign in with Phantom" : "Preparing…"}</button>
+            <button className="btn lg wide" disabled={!phantomSign.ready} onClick={continuePhantomSign}>{phantomSign.ready ? "Sign in with Phantom" : "Preparing…"}</button>
           </>
         )}
         {error && <p className="err">{error}</p>}

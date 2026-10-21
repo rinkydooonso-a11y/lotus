@@ -11,7 +11,7 @@ import { ResultModal } from "./ResultModal";
 import { ConnectSheet } from "./ConnectSheet";
 import { CitySwap } from "./CitySwap";
 import { CaChip, XButton } from "./CaChip";
-import { Mark } from "./Logo";
+import { CrateGlyph, Icon } from "./Icon";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { openFilm } from "./Film";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
@@ -330,30 +330,32 @@ export default function MapView() {
     <div className="mapwrap">
       <div ref={el} className="map" onClick={() => setSel(null)} />
       <div className="mapctl">
-        <button className={tilt ? "on" : ""} onClick={toggleTilt} aria-label="Toggle 3D view">3D</button>
-        <button onClick={recenter} aria-label="Center on me" disabled={!fix}>⌖</button>
+        <button className={tilt ? "on" : ""} onClick={toggleTilt} aria-label="Toggle 3D view" aria-pressed={tilt}>3D</button>
+        <button onClick={recenter} aria-label="Center on me" disabled={!fix}><Icon name="locate" size={17} /></button>
       </div>
-      {balances && balances.tickets > 0 && <button className="fab ticketfab" onClick={() => void useTicket()}>🎟 Use ticket</button>}
+      {balances && balances.tickets > 0 && <button className="fab ticketfab" onClick={() => void useTicket()}><Icon name="ticket" size={17} />Use a ticket<span className="fab-count">{balances.tickets}</span></button>}
 
       {!user && !loading && (
         walletBrowser ? <div className="cta"><WalletBrowserNotice /></div> : (
           <div className="intro">
             <div className="intro-card">
-              <Mark size={44} />
+              <p className="status"><span className="live-dot" />Live in {SERVICE_CITIES.length} cities</p>
               <h1>Graded cards are dropping in <CitySwap /></h1>
-              <div className="intro-cities" role="list" aria-label="Launch cities" ref={chips}>{SERVICE_CITIES.map((c) => <button key={c.name} role="listitem" className={c.name === city ? "on" : ""} aria-current={c.name === city ? "true" : undefined} onClick={() => pickCity(c.name)}>{c.name}</button>)}</div>
               <p>Walk to a crate on the map, open it on your phone, and a real graded card could be yours.</p>
-              <button className="pill primary wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
-              <button className="intro-link" onClick={openFilm}>How it works</button>
+              <div className="intro-cities" role="list" aria-label="Launch cities" ref={chips}>{SERVICE_CITIES.map((c) => <button key={c.name} role="listitem" className={c.name === city ? "on" : ""} aria-current={c.name === city ? "true" : undefined} onClick={() => pickCity(c.name)}>{c.name}</button>)}</div>
+              <div className="intro-actions">
+                <button className="btn lg wide" onClick={() => setConnect(true)}>Connect wallet to play</button>
+                <button className="btn lg secondary wide" onClick={openFilm}><Icon name="play" size={14} />How it works</button>
+              </div>
               <div className="intro-foot"><CaChip full /><XButton /></div>
             </div>
           </div>
         )
       )}
-      {user && geoErr && !(user.isAdmin && !fix) && <div className="cta"><p className="muted">{geoErr}</p></div>}
+      {user && geoErr && !(user.isAdmin && !fix) && <div className="cta"><p className="cta-note"><Icon name="alert" size={18} />{geoErr}</p></div>}
       {user && !fix && (
         <div className="cta">
-          {walletBrowser ? <WalletBrowserNotice /> : !geoErr && <p className="muted">Finding you…</p>}
+          {walletBrowser ? <WalletBrowserNotice /> : !geoErr && <p className="finding"><span className="spinner" />Finding you…</p>}
           {user.isAdmin && (
             <button className="btn" onClick={() => {
               // Admin-only testing aid for in-app wallet browsers that never answer the location prompt.
@@ -367,25 +369,31 @@ export default function MapView() {
       )}
       {user && fix && outside && crates.length === 0 && (
         <div className="cta away">
-          <p className="eyebrow">Not live here yet</p>
-          <h2>No crates in your area <em>yet.</em></h2>
+          <p className="status muted"><Icon name="globe" size={14} />Not live here yet</p>
+          <h2>No crates in your area yet.</h2>
           <p className="muted">CardQuest is launching city by city. Crates are dropping in {SERVICE_CITIES.length} cities right now, and the closest to you is <b>{outside.name}</b>, about {outside.km.toLocaleString("en-US")} km away. More cities open as the vault grows.</p>
           <div className="city-chips">{SERVICE_CITIES.map((c) => <button key={c.name} className={c.name === outside.name ? "on" : ""} onClick={() => map.current && flyToCity(map.current, c)}>{c.name}</button>)}</div>
         </div>
       )}
-      {user && fix && !outside && crates.length === 0 && !target && <div className="toast">Looking for crates nearby…</div>}
+      {user && fix && !outside && crates.length === 0 && !target && <div className="toast"><span className="spinner" />Looking for crates nearby…</div>}
 
       {target && (
         <div className="drawer">
           <div className="dline">
-            <div className={`crate-lg${target.kind === "ticket" ? " ticket" : ""}`}>{target.kind === "ticket" ? "🎟" : "🎁"}</div>
+            <div className={`crate-lg${target.kind === "ticket" ? " ticket" : ""}`}><CrateGlyph size={34} gold={target.kind === "ticket"} /></div>
             <div className="grow">
               <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
-              <div className="muted small">{dist === null ? "…" : near ? "You're in range" : `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m`}</div>
+              <div className={near ? "dist in" : "dist"}>{dist === null ? "Locating…" : near ? <><Icon name="check" size={14} />You&apos;re in range</> : `${Math.round(dist)} m away`}</div>
             </div>
-            <button className="x" onClick={() => setSel(null)} aria-label="Close">✕</button>
+            <button className="x" onClick={() => setSel(null)} aria-label="Close"><Icon name="close" size={14} /></button>
           </div>
-          <button className="btn wide" disabled={!near || opening} onClick={() => void open()}>{opening ? "Opening…" : near ? "Open crate" : "Walk closer"}</button>
+          {dist !== null && (
+            <div className="range" aria-hidden="true">
+              <span className="range-track"><i style={{ width: `${Math.max(6, Math.min(100, (OPEN_RADIUS_M / Math.max(dist, 1)) * 100))}%` }} /></span>
+              <span className="range-label">{near ? "Close enough to open" : `Opens within ${OPEN_RADIUS_M} m`}</span>
+            </div>
+          )}
+          <button className="btn lg wide" disabled={!near || opening} onClick={() => void open()}>{opening ? "Opening…" : near ? "Open crate" : "Walk closer"}</button>
         </div>
       )}
       {result && <ResultModal result={result} onClose={() => setResult(null)} />}

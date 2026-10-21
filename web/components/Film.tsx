@@ -4,6 +4,7 @@ import maplibregl from "maplibre-gl";
 import { cityByName, useCity } from "@/lib/cityStore";
 import { Mark } from "./Logo";
 import { QrCard } from "./QrCard";
+import { Icon } from "./Icon";
 import { LINKS } from "@/lib/links";
 
 /** Open the "How CardQuest works" film from anywhere. */
@@ -124,16 +125,16 @@ export function FilmHost() {
       <div className="reel-stage" key={`s${ch}`}><Stage stage={c.stage} p={p} /></div>
       <div className="reel-top">
         <div className="reel-chapters">{CHAPTERS.map((x, i) => <button key={x.name} onClick={() => go(i)} aria-label={`Chapter ${i + 1}: ${x.name}`}><i style={{ transform: `scaleX(${Math.max(0, Math.min(1, (t - i * CH_MS) / CH_MS))})` }} /></button>)}</div>
-        <button className="reel-close" onClick={close} aria-label="Close">✕</button>
+        <button className="reel-close" onClick={close} aria-label="Close"><Icon name="close" size={16} /></button>
       </div>
       <div className="reel-copy" key={`c${ch}`}>
         <h2 className="film-title"><Words text={c.title} /></h2>
         <p className="film-caption">{c.caption}</p>
-        {done && <button className="pill outline" onClick={() => go(0)}>Watch again</button>}
+        {done && <button className="btn secondary" onClick={() => go(0)}><Icon name="replay" size={16} />Watch again</button>}
       </div>
       <div className="reel-controls">
         <button onClick={() => go(ch - 1)} aria-label="Previous chapter"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg></button>
-        <button className="reel-play" onClick={toggle} aria-label={done ? "Replay" : playing ? "Pause" : "Play"}>{done ? "↻" : playing ? <svg width="18" height="18" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" /></svg> : <svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4v16l13-8z" fill="currentColor" /></svg>}</button>
+        <button className="reel-play" onClick={toggle} aria-label={done ? "Replay" : playing ? "Pause" : "Play"}>{done ? <Icon name="replay" size={20} /> : playing ? <svg width="18" height="18" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" /></svg> : <svg width="18" height="18" viewBox="0 0 24 24"><path d="M7 4v16l13-8z" fill="currentColor" /></svg>}</button>
         <button onClick={() => go(ch + 1)} aria-label="Next chapter"><svg width="18" height="18" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg></button>
         <span className="reel-where"><b>{c.name}</b><small>{ch + 1} / {CHAPTERS.length}</small></span>
       </div>
