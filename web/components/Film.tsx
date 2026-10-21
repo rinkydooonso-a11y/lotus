@@ -140,6 +140,12 @@ export function FilmHost() {
         <button className="reel-btn" onClick={() => go(ch + 1)} aria-label="Next chapter"><IconChevronRight size={18} strokeWidth={2.2} /></button>
         <span className="reel-where"><b>{c.name}</b><small>{ch + 1} / {CHAPTERS.length}</small></span>
       </div>
+      {/* The film's map has MapLibre's own credit turned off, so the style's required credit is shown here. */}
+      <p className="reel-credit">
+        <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>{" "}
+        <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>{" "}
+        Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+      </p>
     </div>
   );
 }
