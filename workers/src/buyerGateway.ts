@@ -13,6 +13,7 @@ import {
   type TransactionInstruction,
 } from '@solana/web3.js';
 import { AccountLayout, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { CC_BUY_CORE_DISCRIMINATOR, CC_PROGRAM, USDC_MINT } from './collectorCrypt.js';
 import * as multisig from '@sqds/multisig';
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH } from './config.js';
@@ -22,6 +23,11 @@ const MPL_CORE = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 const MEMO = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 const ME_M2 = 'M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K';
 const ME_MMM = 'mmm3XBJg5gk8XJxEKBvdgptZz6SgK4tXvn36sodowMc';
+const JUPITER = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
+const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const WSOL = new PublicKey('So11111111111111111111111111111111111111112');
+/** SOL a USDC-priced buy may cost beyond the card: token account rent for the buyer's USDC account, plus fees. */
+const MAX_BUY_SOL_OVERHEAD = 10_000_000n;
 
 const anchorIx = (name: string) => createHash('sha256').update(`global:${name}`).digest().subarray(0, 8).toString('hex');
 
@@ -34,6 +40,7 @@ export const BUY_INSTRUCTIONS: Record<string, Set<string>> = {
   [ME_M2]: new Set(
     ['deposit', 'buy', 'buy_v2', 'execute_sale', 'execute_sale_v2', 'mip1_execute_sale_v2', 'ocp_execute_sale_v2', 'core_execute_sale_v2'].map(anchorIx),
   ),
+  [CC_PROGRAM.toBase58()]: new Set([CC_BUY_CORE_DISCRIMINATOR.toString('hex')]),
   [ME_MMM]: new Set(
     ['sol_fulfill_sell', 'sol_mip1_fulfill_sell', 'sol_ocp_fulfill_sell', 'sol_ext_fulfill_sell', 'sol_mpl_core_fulfill_sell'].map(anchorIx),
   ),
@@ -63,14 +70,42 @@ export function checkBuyInstructions(ixs: TransactionInstruction[], allowed = BU
   }
 }
 
+/**
+ * Pure: refuses a SOL to USDC swap transaction that does anything but swap. Allowed at top level:
+ * compute budget, creating token accounts, a SOL transfer (wrapping), wrapped-SOL sync and close
+ * (close must pay out to the hot wallet), and Jupiter itself. The simulation then bounds the money.
+ */
+export function checkSwapInstructions(ixs: TransactionInstruction[], hot: string): void {
+  for (const ix of ixs) {
+    const program = ix.programId.toBase58();
+    if (program === ComputeBudgetProgram.programId.toBase58() || program === JUPITER) continue;
+    if (program === SystemProgram.programId.toBase58()) {
+      if (ix.data.length >= 4 && ix.data.readUInt32LE(0) === 2) continue; // Transfer, capped by the balance check
+      throw new Error('swap transaction has a system instruction other than a transfer');
+    }
+    if (program === ASSOCIATED_TOKEN_PROGRAM_ID.toBase58()) {
+      if (ix.data.length === 0 || ix.data[0] === 0 || ix.data[0] === 1) continue;
+      throw new Error('swap transaction has an unexpected associated-token instruction');
+    }
+    if (program === TOKEN) {
+      if (ix.data[0] === 17) continue; // SyncNative
+      if (ix.data[0] === 9 && ix.keys[1]?.pubkey.toBase58() === hot) continue; // CloseAccount to the hot wallet
+      throw new Error('swap transaction has a token instruction other than sync or close-to-hot');
+    }
+    throw new Error(`swap transaction calls a program we don't allow: ${program}`);
+  }
+}
+
 export interface BuyerGatewayConfig {
   rpcUrl: string;
   hot: Keypair;
   multisigAddress: string;
   spendingLimitAddress: string;
   allowMainnet: string | undefined;
-  /** Returns the marketplace's serialized buy transaction for `buyer`. */
+  /** Returns the serialized buy transaction for `buyer`. */
   buildBuyTx(listing: Listing, buyer: string): Promise<Uint8Array>;
+  /** Returns a serialized swap of at most `maxSolIn` lamports of SOL into exactly `usdcOut` USDC base units for `user`. */
+  buildSwapTx(usdcOut: bigint, maxSolIn: bigint, user: string): Promise<Uint8Array>;
   /** SOL price source; refused if outside [min, max]. */
   solUsd(): Promise<number>;
   solUsdBounds: [number, number];
@@ -101,10 +136,11 @@ const TOKEN_PROGRAMS = new Set(['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', '
 export function checkNoHotAssetsWritable(
   writable: Array<{ key: string; owner: string; data: Buffer } | { key: string; owner: null; data: null }>,
   hot: string,
-  cardAccount: string,
+  cardAccount: string | string[],
 ): void {
+  const allowed = new Set(Array.isArray(cardAccount) ? cardAccount : [cardAccount]);
   for (const a of writable) {
-    if (a.key === cardAccount || a.owner === null) continue;
+    if (allowed.has(a.key) || a.owner === null) continue;
     if (TOKEN_PROGRAMS.has(a.owner) && a.data.length >= AccountLayout.span) {
       if (AccountLayout.decode(a.data).owner.toBase58() === hot) throw new Error(`buy transaction writes to a hot-wallet token account ${a.key}`);
     } else if (a.owner === MPL_CORE && a.data.length >= 33 && a.data[0] === 1) {
@@ -143,6 +179,83 @@ export async function createBuyerGateway(
 
   const state = async (signature: string) =>
     (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+
+  /** Resolves lookup tables, checks the extra signatures, and returns the instructions and writable accounts. */
+  const inspectTx = async (tx: VersionedTransaction) => {
+    const msg = tx.message;
+    if (!msg.staticAccountKeys[0]?.equals(hot)) throw new Error('transaction is not paid by the hot wallet');
+    const luts: AddressLookupTableAccount[] = [];
+    for (const l of msg.addressTableLookups) {
+      const res = await connection.getAddressLookupTable(l.accountKey);
+      if (!res.value) throw new Error(`lookup table ${l.accountKey.toBase58()} not found`);
+      luts.push(res.value);
+    }
+    const instructions = TransactionMessage.decompile(msg, { addressLookupTableAccounts: luts }).instructions;
+    const keys = msg.getAccountKeys({ addressLookupTableAccounts: luts });
+    const writableKeys: PublicKey[] = [];
+    for (let i = 0; i < keys.length; i++) if (msg.isAccountWritable(i)) writableKeys.push(keys.get(i)!);
+    // Every other required signature must already be present (e.g. a marketplace notary).
+    for (let i = 1; i < msg.header.numRequiredSignatures; i++) {
+      if (tx.signatures[i]?.every((b) => b === 0)) throw new Error('transaction needs a signature we do not have');
+    }
+    return { instructions, writableKeys };
+  };
+
+  const checkWritable = async (writableKeys: PublicKey[], allowed: string | string[]) => {
+    const writable: Parameters<typeof checkNoHotAssetsWritable>[0] = [];
+    for (let i = 0; i < writableKeys.length; i += 100) {
+      const chunk = writableKeys.slice(i, i + 100);
+      const infos = await connection.getMultipleAccountsInfo(chunk, 'confirmed');
+      chunk.forEach((k, j) => {
+        const info = infos[j];
+        writable.push(info ? { key: k.toBase58(), owner: info.owner.toBase58(), data: info.data } : { key: k.toBase58(), owner: null, data: null });
+      });
+    }
+    checkNoHotAssetsWritable(writable, hot.toBase58(), allowed);
+  };
+
+  const sendAndWait = async (tx: VersionedTransaction, signature: string, what: string) => {
+    await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 5 });
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const s = await state(signature);
+      if (s?.err) throw new Error(`${what} failed on chain: ${JSON.stringify(s.err)}`);
+      if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized') return;
+    }
+    throw new Error(`${what} not confirmed within 80s`);
+  };
+
+  const usdcBalance = async (ata: PublicKey): Promise<bigint> => {
+    const info = await connection.getAccountInfo(ata, 'confirmed');
+    return info && info.data.length >= AccountLayout.span ? AccountLayout.decode(info.data).amount : 0n;
+  };
+
+  /** Swaps just enough SOL into USDC to cover `need`, after checking and simulating the swap. Leftover USDC is reused. */
+  const ensureUsdc = async (usdcAta: PublicKey, need: bigint, maxSolIn: bigint) => {
+    const have = await usdcBalance(usdcAta);
+    if (have >= need) return;
+    const deficit = need - have;
+    const tx = VersionedTransaction.deserialize(await cfg.buildSwapTx(deficit, maxSolIn, hot.toBase58()));
+    const { instructions, writableKeys } = await inspectTx(tx);
+    checkSwapInstructions(instructions, hot.toBase58());
+    await checkWritable(writableKeys, [usdcAta.toBase58(), getAssociatedTokenAddressSync(WSOL, hot).toBase58()]);
+    const before = BigInt(await connection.getBalance(hot, 'confirmed'));
+    const sim = await connection.simulateTransaction(tx, {
+      sigVerify: false,
+      replaceRecentBlockhash: false,
+      commitment: 'confirmed',
+      accounts: { encoding: 'base64', addresses: [hot.toBase58(), usdcAta.toBase58()] },
+    });
+    if (sim.value.err) throw new Error(`swap simulation failed: ${JSON.stringify(sim.value.err)}`);
+    const [payer, usdc] = sim.value.accounts ?? [];
+    if (!payer || !usdc) throw new Error('swap simulation returned no account state');
+    const spent = before - BigInt(payer.lamports);
+    if (spent > maxSolIn) throw new Error(`swap would spend ${spent} lamports, more than the allowed ${maxSolIn}`);
+    const got = AccountLayout.decode(Buffer.from(usdc.data[0] ?? '', 'base64')).amount - have;
+    if (got < deficit) throw new Error(`swap would deliver ${got} USDC units, less than the ${deficit} needed`);
+    tx.sign([cfg.hot]);
+    await sendAndWait(tx, base58.deserialize(tx.signatures[0]!)[0], 'swap');
+  };
 
   return {
     hotWallet: hot.toBase58(),
@@ -184,55 +297,44 @@ export async function createBuyerGateway(
     },
 
     async prepareBuy(listing, maxSpend) {
+      const mint = new PublicKey(listing.mint);
+      const usdcAta = getAssociatedTokenAddressSync(USDC_MINT, hot);
+      const usdcPrice = listing.priceUsdc;
+      // USDC-priced listings are paid from the hot wallet's USDC, topped up by a swap from SOL first.
+      if (usdcPrice !== undefined) await ensureUsdc(usdcAta, usdcPrice, maxSpend);
+
       const tx = VersionedTransaction.deserialize(await cfg.buildBuyTx(listing, hot.toBase58()));
-      const msg = tx.message;
-      if (!msg.staticAccountKeys[0]?.equals(hot)) throw new Error('buy transaction is not paid by the hot wallet');
-      const luts: AddressLookupTableAccount[] = [];
-      for (const l of msg.addressTableLookups) {
-        const res = await connection.getAddressLookupTable(l.accountKey);
-        if (!res.value) throw new Error(`lookup table ${l.accountKey.toBase58()} not found`);
-        luts.push(res.value);
-      }
-      checkBuyInstructions(TransactionMessage.decompile(msg, { addressLookupTableAccounts: luts }).instructions);
-      const keys = msg.getAccountKeys({ addressLookupTableAccounts: luts });
-      const writableKeys: PublicKey[] = [];
-      for (let i = 0; i < keys.length; i++) if (msg.isAccountWritable(i)) writableKeys.push(keys.get(i)!);
-      // Every other required signature must already be present (e.g. the marketplace's notary).
-      for (let i = 1; i < msg.header.numRequiredSignatures; i++) {
-        if (tx.signatures[i]?.every((b) => b === 0)) throw new Error('buy transaction needs a signature we do not have');
-      }
+      const { instructions, writableKeys } = await inspectTx(tx);
+      checkBuyInstructions(instructions);
 
       // Where the card will sit once it is ours: the Core asset itself, or our token account.
-      const mint = new PublicKey(listing.mint);
       const mintInfo = await connection.getAccountInfo(mint, 'confirmed');
       if (!mintInfo) throw new Error('card mint not found');
       const core = mintInfo.owner.toBase58() === MPL_CORE;
       const cardAccount = core ? mint : getAssociatedTokenAddressSync(mint, hot, false, mintInfo.owner);
 
       // Nothing the hot wallet already holds may be writable (prize cards, other token accounts).
-      const writable: Parameters<typeof checkNoHotAssetsWritable>[0] = [];
-      for (let i = 0; i < writableKeys.length; i += 100) {
-        const chunk = writableKeys.slice(i, i + 100);
-        const infos = await connection.getMultipleAccountsInfo(chunk, 'confirmed');
-        chunk.forEach((k, j) => {
-          const info = infos[j];
-          writable.push(info ? { key: k.toBase58(), owner: info.owner.toBase58(), data: info.data } : { key: k.toBase58(), owner: null, data: null });
-        });
-      }
-      checkNoHotAssetsWritable(writable, hot.toBase58(), cardAccount.toBase58());
+      await checkWritable(writableKeys, usdcPrice !== undefined ? [cardAccount.toBase58(), usdcAta.toBase58()] : cardAccount.toBase58());
 
       const before = BigInt(await connection.getBalance(hot, 'confirmed'));
+      const usdcBefore = usdcPrice !== undefined ? await usdcBalance(usdcAta) : 0n;
       const sim = await connection.simulateTransaction(tx, {
         sigVerify: false,
         replaceRecentBlockhash: false,
         commitment: 'confirmed',
-        accounts: { encoding: 'base64', addresses: [hot.toBase58(), cardAccount.toBase58()] },
+        accounts: { encoding: 'base64', addresses: [hot.toBase58(), cardAccount.toBase58(), usdcAta.toBase58()] },
       });
       if (sim.value.err) throw new Error(`buy simulation failed: ${JSON.stringify(sim.value.err)}`);
-      const [payer, card] = sim.value.accounts ?? [];
+      const [payer, card, usdc] = sim.value.accounts ?? [];
       if (!payer || !card) throw new Error('simulation returned no account state');
       const spend = before - BigInt(payer.lamports);
-      if (spend > maxSpend) throw new Error(`buy would spend ${spend} lamports, more than the allowed ${maxSpend}`);
+      if (usdcPrice !== undefined) {
+        if (spend > MAX_BUY_SOL_OVERHEAD) throw new Error(`buy would spend ${spend} lamports of SOL on a USDC purchase`);
+        const after = usdc ? AccountLayout.decode(Buffer.from(usdc.data[0] ?? '', 'base64')).amount : 0n;
+        if (usdcBefore - after > usdcPrice) throw new Error(`buy would spend ${usdcBefore - after} USDC units, more than the price ${usdcPrice}`);
+      } else if (spend > maxSpend) {
+        throw new Error(`buy would spend ${spend} lamports, more than the allowed ${maxSpend}`);
+      }
       const data = Buffer.from(card.data[0] ?? '', 'base64');
       const ownsAfter = core
         ? data.length >= 33 && new PublicKey(data.subarray(1, 33)).equals(hot)
@@ -244,19 +346,7 @@ export async function createBuyerGateway(
 
       tx.sign([cfg.hot]);
       const signature = base58.deserialize(tx.signatures[0]!)[0];
-      return {
-        signature,
-        async send() {
-          await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true, maxRetries: 5 });
-          for (let i = 0; i < 40; i++) {
-            await new Promise((r) => setTimeout(r, 2000));
-            const s = await state(signature);
-            if (s?.err) throw new Error(`buy failed on chain: ${JSON.stringify(s.err)}`);
-            if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized') return;
-          }
-          throw new Error('buy not confirmed within 80s');
-        },
-      };
+      return { signature, send: () => sendAndWait(tx, signature, 'buy') };
     },
 
     async purchaseState(signature, createdAt): Promise<PurchaseState> {

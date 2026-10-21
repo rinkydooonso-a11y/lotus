@@ -55,8 +55,11 @@ The order matters: money-moving pieces switch on last, and the confirmation phra
 
 `/api/health`, `/admin` flagged players, prize sends stuck in `failed`, hot wallet SOL balance, Helius and Upstash usage. Stop switches are in `docs/rollback-runbook.md`.
 
-## Pinned card buyer values (verified on chain via DAS)
+## Card buyer (Collector Crypt marketplace, USDC, no API key)
 
-- `BUY_COLLECTION_ADDRESS` = `CCryptWBYktukHDQ2vHGtVcmtjXxYzvw8XNVY64YN2Yf` (verified collection "Collector Crypt", about 58,226 assets).
-- `BUY_UPDATE_AUTHORITY` = `DQPERZ9e86pNJ4mhUnCEP8V75yxZofsipoVrRWT5Wdxd` (the authority on every asset sampled).
-- Still needed before the buyer runs: `MAGIC_EDEN_API_KEY`, so the buy instruction allowlist check can run.
+The buyer reads `api.collectorcrypt.com/marketplace`, re-reads each listing account on chain, and builds the `buy_core` transaction itself (program `CcmRKTuZ...SQUr`). Only the hot wallet signs. Cards cost USDC, so the hot wallet swaps just enough SOL (from the Squads spending limit) into USDC through Jupiter before each buy. Per-card cap is `BUY_MAX_USD_PER_CARD` (default 25).
+
+- `BUY_COLLECTION_ADDRESS` = `CCryptUfeFSZ3Fgc9FLeKrhLVAP67FSqi1GuVoj9CRac` (the Core collection the marketplace whitelists).
+- `BUY_UPDATE_AUTHORITY` = `CCryptUfeFSZ3Fgc9FLeKrhLVAP67FSqi1GuVoj9CRac` (a Core asset's update authority is its collection). Confirm on one sampled asset with DAS `getAsset` (its `authorities`) before turning the buyer on; the older `CCryptWBYk...`/`DQPERZ9e...` values belong to legacy Magic Eden cards and must not be used.
+- `BUY_REQUIRED_TRAITS` = `Type=Card`.
+- Before turning it on: fund the hot wallet with a little SOL, run `scripts/buyer-dry-run.ts` (read-only), and run a mainnet simulation of a swap plus buy with the funded hot wallet. The program is upgradeable and has pause controls, so re-check the instruction layout if a simulation starts failing.

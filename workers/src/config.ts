@@ -72,14 +72,16 @@ const EnvSchema = z.object({
   BUY_REQUIRED_TRAITS: z.string().default(''),
   BUY_VALUE_TRAIT: z.string().min(1).default('Insured Value'),
   BUY_GRADE_TRAIT: z.string().default('Grade'),
-  /** Magic Eden collection symbol: where listings are read from. */
-  BUY_COLLECTION: z.string().min(1).default('collector_crypt'),
   /** The verified on-chain Collector Crypt collection and update authority. Required with the buyer. */
   BUY_COLLECTION_ADDRESS: base58Address.optional(),
   BUY_UPDATE_AUTHORITY: base58Address.optional(),
   /** Off-chain backstop: card spend over any 7 days, on top of the on-chain spending limit. */
   BUY_WEEKLY_MAX_SOL: z.coerce.number().positive().default(20),
   BUY_MAX_PRICE_TO_VALUE: z.coerce.number().positive().max(2).default(1),
+  /** Never pay more than this many USD (USDC) for one card. */
+  BUY_MAX_USD_PER_CARD: z.coerce.number().positive().max(1000).default(25),
+  /** Slippage allowed on the SOL to USDC swap that funds a purchase. */
+  BUY_SWAP_SLIPPAGE_BPS: z.coerce.number().int().min(1).max(500).default(100),
   BUY_MAX_SOL_PER_CARD: z.coerce.number().positive().max(100).default(1),
   BUY_MAX_CARDS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
   BUY_MAX_OVERHEAD_BPS: z.coerce.number().int().min(0).max(2000).default(800),
