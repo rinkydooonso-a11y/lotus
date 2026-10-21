@@ -1,7 +1,7 @@
 import type { Logger } from './types.js';
 
 /**
- * Fee claimer: moves the CARDS coin's pump.fun creator fees into the Squads vault.
+ * Fee claimer: moves the QUEST coin's pump.fun creator fees into the Squads vault.
  *
  * It calls pump's permissionless sweep / consolidate / distribute instructions, which pay every
  * shareholder of the coin's fee-sharing config directly. The bot's key only pays gas: the fees
