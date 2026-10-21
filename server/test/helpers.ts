@@ -2,7 +2,6 @@ import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import type { Rng } from '../src/rng';
 import { upsertPlayerByWallet } from '../src/players';
-import type { AreaData, LatLng } from '../src/walkable';
 import type { CoinBalance, CoinHoldConfig } from '../src/coin';
 
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 30 });
@@ -59,27 +58,6 @@ export const ROLL_TICKET_COMMON = 20_000; // ticket common [14_250, 50_000); sha
 export const ROLL_SHARDS = 999_999;
 
 export const allow = async () => ({ ok: true as const });
-
-// Walkable-ground stand-in, so seeder tests never touch Overpass -------------------------
-
-const M_PER_DEG_LAT = 111_320;
-function square(center: LatLng, halfM: number) {
-  const dLat = halfM / M_PER_DEG_LAT;
-  const dLng = halfM / (M_PER_DEG_LAT * Math.cos((center.lat * Math.PI) / 180));
-  const c: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]];
-  return c.map(([x, y]) => ({ lat: center.lat + y * dLat, lng: center.lng + x * dLng }));
-}
-
-/** An area loader that says everything within halfM of the anchor is a walkable plaza. */
-export const plazaLoader = (halfM = 350) => async (lat: number, lng: number): Promise<AreaData> => ({
-  lines: [],
-  areas: [square({ lat, lng }, halfM)],
-  waterAreas: [],
-  waterLines: [],
-});
-
-/** An area loader standing in for Overpass being down. */
-export const noAreaLoader = async (): Promise<AreaData | null> => null;
 
 // Coin holder gate -------------------------------------------------------------
 

@@ -8,7 +8,7 @@ import { loadOdds } from '../src/odds';
 import { ROLL_TIERS, type CrateKind } from '../src/types';
 import { getAllowance } from '../src/tickets';
 import {
-  addCards, allow, crateAt, forcedRng, giveTickets, LAT, LNG, newPlayer, noAreaLoader, plazaLoader,
+  addCards, allow, crateAt, forcedRng, giveTickets, LAT, LNG, newPlayer,
   pool, reset, ROLL_COMMON, ROLL_SHARDS, ROLL_TICKET_COMMON, TEST_CITY,
 } from './helpers';
 
@@ -318,9 +318,9 @@ describe('prize send queue', () => {
 });
 
 describe('world crate seeder', () => {
-  const seedOpts = { cities: [TEST_CITY], maxAnchors: 25, areaLoader: plazaLoader() };
+  const seedOpts = { cities: [TEST_CITY] };
 
-  it('fills a city to target on walkable ground, keeping crates apart', async () => {
+  it('fills a city to target inside its core, keeping crates apart', async () => {
     const r = await seedWorldCrates({ ...seedOpts, cratesPerCity: 6 }, pool);
     expect(r.created).toBe(6);
     expect(r.byCity[TEST_CITY.name]).toBe(6);
@@ -336,7 +336,7 @@ describe('world crate seeder', () => {
     const outside = await pool.query(
       `SELECT count(*)::int AS n FROM crates
         WHERE ST_Distance(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) > $3`,
-      [TEST_CITY.lat, TEST_CITY.lng, TEST_CITY.radiusKm * 1_000 + GAME.citySeedRadiusM],
+      [TEST_CITY.lat, TEST_CITY.lng, TEST_CITY.radiusKm * 1_000],
     );
     expect(outside.rows[0].n).toBe(0);
   });
@@ -353,10 +353,23 @@ describe('world crate seeder', () => {
     expect((await pool.query(`SELECT count(*)::int AS n FROM crates`)).rows[0].n).toBe(6);
   });
 
-  it('places nothing when OpenStreetMap data is unavailable', async () => {
-    const r = await seedWorldCrates({ cities: [TEST_CITY], cratesPerCity: 5, maxAnchors: 3, areaLoader: noAreaLoader }, pool);
-    expect(r).toMatchObject({ created: 0, noAreaData: 3 });
-    expect((await pool.query(`SELECT count(*)::int AS n FROM crates`)).rows[0].n).toBe(0);
+  it('needs no network: seeding runs with every outbound fetch broken', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new Error('network is down'); }) as typeof fetch;
+    try {
+      const r = await seedWorldCrates({ ...seedOpts, cratesPerCity: 5 }, pool);
+      expect(r).toMatchObject({ created: 5, noRoom: 0 });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('reports a city with no free spot instead of looping or throwing', async () => {
+    // A 100 m core holds one spot at the 200 m grid step, and crates must be 120 m apart.
+    const tiny = { ...TEST_CITY, name: 'Tinyville', core: { lat: LAT, lng: LNG, radiusKm: 0.1 } };
+    const r = await seedWorldCrates({ cities: [tiny], cratesPerCity: 4 }, pool);
+    expect(r.created).toBe(1);
+    expect(r.noRoom).toBe(1);
   });
 
   it('replaces a claimed crate on the next run', async () => {

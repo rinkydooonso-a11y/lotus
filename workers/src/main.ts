@@ -168,13 +168,12 @@ async function main() {
       const n = await expireStaleCrates(db);
       if (n) log.info('expired stale crates', { count: n });
     }, controller.signal));
-    // Keeps the shared map stocked: tops each launch city up towards its target, within the global
-    // per-day ceiling. Placement needs a rate limited OpenStreetMap lookup per patch of ground, so
-    // a tick does a few and the next ones carry on.
+    // Keeps the shared map stocked: tops each launch city up to its target, within the global
+    // per-day ceiling. Spots come from a fixed grid, so this needs the database and nothing else.
     loops.push(loop('seed-crates', config.CRATE_SEED_INTERVAL_MS, async () => {
-      const r = await seedWorldCrates({ maxAnchors: config.CRATE_SEED_MAX_ANCHORS }, db);
+      const r = await seedWorldCrates({}, db);
       if (r.created || r.shortfall) log.info('seeded world crates', { ...r });
-      if (!r.created && r.noAreaData) log.warn('placed no crates: OpenStreetMap data unavailable', { anchors: r.noAreaData });
+      if (r.noRoom) log.warn('a city had no free spot for a crate', { cities: r.noRoom });
     }, controller.signal));
     loops.push(loop('prune-pings', 3_600_000, async () => {
       const n = await pruneLocationPings({ retentionDays: config.PING_RETENTION_DAYS }, db);

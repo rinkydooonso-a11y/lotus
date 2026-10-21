@@ -13,7 +13,7 @@ node run.mjs --url http://localhost:3000 --players 300 --minutes 3 --ping-ms 150
 ## Results (2026-10-20, local copy)
 
 Setup: one `next start` process (4 vCPU container), local Postgres 16 + PostGIS, local Redis behind an Upstash
-REST shim, `WALKABLE_SPAWNS=off` (no load on the public Overpass), no Helius. Pings every 15 s. The simulated
+REST shim, no Helius. Pings every 15 s. The simulated
 players open far more often than real ones (crates are close and they walk straight at them), so open load is
 pessimistic.
 

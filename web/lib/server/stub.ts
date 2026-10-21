@@ -26,7 +26,7 @@ const FREE_OPENS_PER_DAY = 10;
 const SHARDS_PER_TICKET = 25;
 /**
  * Dev mode only: crates kept alive near wherever a dev is standing, standing in for the seeder
- * worker so the map isn't empty without Postgres or Overpass. The real game never places a crate
+ * worker so the map isn't empty without Postgres. The real game never places a crate
  * because a player turned up — see server/src/crates.ts.
  */
 const CRATES_NEARBY = 12;

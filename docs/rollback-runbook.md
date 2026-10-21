@@ -10,7 +10,6 @@ Each section: how you notice, what players see, what to do. Health at a glance: 
 | Stop all prize sends | Wins keep recording and queue safely; nothing leaves the hot wallet | `fly scale count 0 -a lotus-workers` (resume: `fly scale count 1 -a lotus-workers`) |
 | Pull one card | It can no longer be won | `/admin` inventory > `withheld` |
 | Freeze a player | Their opens are refused and unsent prizes held | `/admin` flagged > freeze |
-| Disable walkable spawns | Crates spawn without the Overpass footpath check | Vercel env `WALKABLE_SPAWNS=off`, redeploy |
 | Tighten anti-cheat | Lower caps or longer cooldowns | Vercel env `LOTUS_AC_*` (see `.env.example`), redeploy |
 
 ## Bad web deploy
@@ -58,7 +57,6 @@ From the nightly GitHub backup (any plan):
 | --- | --- | --- | --- |
 | Postgres | Map shows no crates; opens fail with "try again" | Requests fail within 5 s (connection timeout), no crash; recovers by itself when the DB is back | Supabase status page; nothing else needed |
 | Redis (Upstash) | Opens refused with "CardQuest is busy right now", map still works | Anti-cheat fails closed in about 0.1 s: no open can skip the checks | Upstash console: check the monthly command limit first |
-| Overpass | Crates spawn slightly slower and may sit off footpaths | Gives up after 3 s and uses a short nudge; backs off for a while | `WALKABLE_SPAWNS=off` if it lasts |
 | Helius | Prize sends arrive late; new-wallet checks are skipped | Sends retry; wallet-age and funder signals are skipped (other checks still run) | Helius dashboard: rate limit or credits |
 | Fly worker | Wins show "pending" longer | Restarts automatically on crash; health turns red after 15 min | `fly status -a lotus-workers`, `fly machine restart` |
 | Map tiles | Grey map, crates still shown | Nothing | Point the map at another tile provider (MapTiler, Stadia) and redeploy |

@@ -48,8 +48,8 @@ Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–30
   belongs to nobody, any player who reaches it can open it, and opening it takes it off the map for everyone.
   A crate lives `crateTtlMs` (default 12 h) and the seeder replaces the ones that go.
 - Global ceiling of `maxWorldCratesPerDay` (default 1500) crates created per UTC day, whatever the per-city target says.
-- Crates land only on walkable OpenStreetMap ground, never in water, and no two active crates are within
-  `crateMinSpacingM` (default 120 m). When Overpass is unavailable nothing is placed.
+- Crates land only inside a launch city's core, on a fixed grid of spots (`crateSpots.ts`), and no two active
+  crates are within `crateMinSpacingM` (default 120 m). Seeding needs only the database.
 - One player gets `freeOpensPerDay` (default 10) free opens a UTC day, each rolling a 1% card rate. Every further open that day spends a
   ticket and rolls on the `ticket` odds. Enforced by a conditional write on `player_open_days` inside the
   open transaction, so two simultaneous opens can't both take it.
@@ -83,7 +83,7 @@ recordLocationPing(input: PingInput, db?): Promise<void>
 
 nearbyCrates(input: { lat: number; lng: number; radiusM?: number }, db?): Promise<CrateView[]>
 // Read-only: the world crates around a position (default 2 km, 60 max). Creates nothing, so a ping is
-// one indexed query and no Overpass call.
+// one indexed query and nothing else.
 // CrateView = { id, lat, lng, kind, expiresAt: string (ISO), city?: string }
 
 // placement (worker only, every CRATE_SEED_INTERVAL_MS)
