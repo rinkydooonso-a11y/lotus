@@ -49,6 +49,11 @@ Three things bound the day, and they multiply in this order:
    and opens pay shards for the rest of the UTC day. This is the only one that is a hard dollar stop, and
    it is exact: each card is booked against `prize_budget_days` inside the open transaction.
 
-So the budget to plan against is the breaker, not the odds: at the defaults (10 cards, $300) the most a
-day can pay is $300, whether ten people play or ten thousand. Set those two from what fee income
-actually buys per day, then set the crate count for how busy the map should feel.
+So the budget to plan against is the breaker, not the odds: at the defaults the most a day can pay is
+**$400**, whether ten people play or ten thousand. That dollar figure is the dial to set from what fee
+income actually buys per day. The 25-card count beside it is only a sanity stop for a vault full of
+cheap cards, and it is deliberately above what $400 of average cards comes to ($400 / $35 is about 11),
+so the dollar ceiling is what binds. Then set the crate count for how busy the map should feel.
+
+At a 1% card rate, $400 is roughly 95 players walking all ten of their opens. Below that the breaker
+never fires and nobody can tell it is there.

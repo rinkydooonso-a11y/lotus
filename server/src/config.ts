@@ -38,9 +38,15 @@ export const GAME = {
   nearbyRadiusM: num('LOTUS_NEARBY_RADIUS_M', 2_000),
   /** Opens a player gets for free each UTC day. Every further open that day spends a ticket. */
   freeOpensPerDay: num('LOTUS_FREE_OPENS_PER_DAY', 10),
-  /** Circuit breaker: once either is reached in a UTC day, card tiers roll 0 and opens pay shards. */
-  maxCardsPerDay: num('LOTUS_MAX_CARDS_PER_DAY', 10),
-  maxCardValueUsdPerDay: num('LOTUS_MAX_CARD_VALUE_PER_DAY', 300),
+  /**
+   * Circuit breaker: once either is reached in a UTC day, card tiers roll 0 and opens pay shards.
+   *
+   * The dollar ceiling is the one to set from fee income; it is meant to be the limit that binds.
+   * The card count is a sanity stop for the case where the vault fills with cheap cards, so keep it
+   * high enough that an average day's cards cost more than maxCardsPerDay x the average card.
+   */
+  maxCardsPerDay: num('LOTUS_MAX_CARDS_PER_DAY', 25),
+  maxCardValueUsdPerDay: num('LOTUS_MAX_CARD_VALUE_PER_DAY', 400),
   shardsPerEmptyMin: 1,
   shardsPerEmptyMax: 3,
   /**

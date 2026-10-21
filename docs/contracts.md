@@ -53,7 +53,7 @@ Tier value bands (USD insured value): common <30, uncommon 30–75, rare 75–30
 - One player gets `freeOpensPerDay` (default 10) free opens a UTC day, each rolling a 1% card rate. Every further open that day spends a
   ticket and rolls on the `ticket` odds. Enforced by a conditional write on `player_open_days` inside the
   open transaction, so two simultaneous opens can't both take it.
-- Daily prize budget: `maxCardsPerDay` (10) and `maxCardValueUsdPerDay` (300). A card is booked against
+- Daily prize budget: `maxCardValueUsdPerDay` (400) and `maxCardsPerDay` (25). A card is booked against
   `prize_budget_days` in the open transaction, so the day's ceiling is exact under concurrent wins. Past
   either ceiling the card tiers roll 0 and opens pay shards; `getPublicOdds` shows that.
 - Open radius 40 m, checked in SQL with `ST_DWithin` inside the open transaction.
