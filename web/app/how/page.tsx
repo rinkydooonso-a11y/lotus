@@ -3,6 +3,8 @@ import { WatchButton } from "@/components/HomePanels";
 import { FeeFlow, SiteFooter, TierRows } from "@/components/Docs";
 import { CaChip } from "@/components/CaChip";
 import { Mark } from "@/components/Logo";
+import { CardThumb } from "@/components/CardThumb";
+import { CrateGlyph } from "@/components/Icons";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { LINKS } from "@/lib/links";
 
@@ -36,16 +38,17 @@ function Phone({ children, caption }: { children: React.ReactNode; caption: stri
 export default function How() {
   return (
     <div className="docs">
-      <section className="docs-hero">
-        <h1>Find a crate. Crack it open. <em>Keep the card.</em></h1>
+      <section className="docs-hero how-hero">
+        <p className="page-kicker">How it works</p>
+        <h1>Find a crate. Crack it open. Keep the card.</h1>
         <p className="docs-lede">CardQuest is a map game where the prizes are real: professionally graded trading cards from a public vault, sent to your wallet the moment you pull one.</p>
         <WatchButton />
       </section>
 
       <div className="phones">
-        <Phone caption="Crates land around you"><div className="ph-map"><span className="ph-crate" style={{ left: "30%", top: "34%" }}><Mark size={30} /></span><span className="ph-crate" style={{ left: "62%", top: "52%" }}><Mark size={30} /></span><span className="ph-you" /></div></Phone>
-        <Phone caption="Walk up and open one"><div className="ph-open"><span className="ph-burst" /><Mark size={64} /></div></Phone>
-        <Phone caption="A real slab, in your wallet"><div className="ph-card"><div className="slab s-rare lg"><div className="slab-label"><span>PSA 10</span></div><div className="slab-art"><i /></div></div></div></Phone>
+        <Phone caption="Crates land around you"><div className="ph-map"><span className="ph-crate" style={{ left: "30%", top: "34%" }}><CrateGlyph size={40} /></span><span className="ph-crate" style={{ left: "66%", top: "50%" }}><CrateGlyph size={40} gold /></span><span className="ph-you" /></div></Phone>
+        <Phone caption="Walk up and open one"><div className="ph-open"><span className="ph-burst" /><Mark size={84} /></div></Phone>
+        <Phone caption="A real slab, in your wallet"><div className="ph-card"><CardThumb tier="rare" grade="PSA 10" size="md" /></div></Phone>
       </div>
 
       <section id="play"><h2>How to play</h2>
@@ -75,7 +78,7 @@ export default function How() {
       </section>
 
       <section id="rules"><h2>House rules</h2>
-        <ol className="rule-cards">{rules.map(([t, d], i) => <li key={t}><span className="rule-n">{i + 1}</span><b>{t}</b><p>{d}</p></li>)}</ol>
+        <ol className="rule-cards">{rules.map(([t, d], i) => <li key={t}><span className="step-n">{i + 1}</span><b>{t}</b><p>{d}</p></li>)}</ol>
       </section>
 
       <section id="coin"><h2>{LINKS.ticker}</h2>
@@ -84,7 +87,7 @@ export default function How() {
       </section>
 
       <section id="faq"><h2>Questions</h2>
-        {faq.map(([q, a]) => <details key={q} className="faq"><summary>{q}</summary><p>{a}</p></details>)}
+        <div className="faq-list">{faq.map(([q, a]) => <details key={q} className="faq"><summary>{q}</summary><p>{a}</p></details>)}</div>
       </section>
       <SiteFooter />
     </div>

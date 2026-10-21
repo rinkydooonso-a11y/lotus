@@ -1,13 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Feed } from "@/lib/types";
 import { TIER_LABEL, timeAgo, usd } from "@/lib/format";
 import { CardThumb } from "./CardThumb";
+import { IconChevronLeft, IconChevronRight } from "./Icons";
 
 const TABS = [
-  { k: "recent", label: "Live pulls" },
+  { k: "recent", label: "Latest" },
   { k: "biggest", label: "Biggest" },
-  { k: "collectors", label: "Collectors" },
+  { k: "collectors", label: "Top collectors" },
 ] as const;
 type TabKey = (typeof TABS)[number]["k"];
 
@@ -23,45 +24,83 @@ export function useFeed(): Feed | null {
   return feed;
 }
 
-export function PullsFeed({ feed }: { feed: Feed | null }) {
-  const [tab, setTab] = useState<TabKey>("recent");
+export function Segmented<K extends string>({ items, value, onChange, label }: { items: readonly { k: K; label: string }[]; value: K; onChange: (k: K) => void; label: string }) {
   return (
-    <div className="feed">
-      <div className="seg" role="tablist">
-        {TABS.map((t) => (
-          <button key={t.k} role="tab" aria-selected={tab === t.k} className={tab === t.k ? "on" : ""} onClick={() => setTab(t.k)}>
-            {t.k === "recent" && <span className="live-dot" />}{t.label}
-          </button>
-        ))}
-      </div>
-      <div className="feed-list">
-        {!feed ? <p className="muted feed-empty">Loading…</p> : tab === "collectors" ? (
-          feed.collectors.length === 0 ? <p className="muted feed-empty">No collectors yet. Be the first.</p> : (
-            <ol className="collectors">
+    <div className="seg" role="tablist" aria-label={label}>
+      {items.map((t) => <button key={t.k} role="tab" aria-selected={value === t.k} className={value === t.k ? "on" : ""} onClick={() => onChange(t.k)}>{t.label}</button>)}
+    </div>
+  );
+}
+
+/** The live feed as a shelf of slabs (latest, biggest) or a leaderboard (top collectors). */
+export function PullsShowcase({ feed }: { feed: Feed | null }) {
+  const [tab, setTab] = useState<TabKey>("recent");
+  const shelf = useRef<HTMLUListElement>(null);
+  const page = (dir: number) => { const s = shelf.current; if (s) s.scrollBy({ left: dir * s.clientWidth * 0.8, behavior: "smooth" }); };
+  return (
+    <div className="showcase">
+      <div className="wrap showcase-bar"><Segmented items={TABS} value={tab} onChange={setTab} label="Live pulls" /></div>
+      {!feed ? <div className="shelf-empty">Loading…</div> : tab === "collectors" ? (
+        feed.collectors.length === 0 ? <div className="shelf-empty">No collectors yet. Be the first.</div> : (
+          <div className="wrap narrow">
+            <ol className="group leaders">
               {feed.collectors.map((c, i) => (
-                <li key={c.collector}>
+                <li key={c.collector} className="group-row">
                   <span className={`rank r${i + 1}`}>{i + 1}</span>
                   <span className="grow mono">{c.collector}</span>
-                  <span className="muted small">{c.cards} card{c.cards === 1 ? "" : "s"}</span>
-                  <b>{usd(c.totalUsd)}</b>
+                  <span className="muted">{c.cards} card{c.cards === 1 ? "" : "s"}</span>
+                  <b className="num">{usd(c.totalUsd)}</b>
                 </li>
               ))}
             </ol>
-          )
-        ) : feed[tab].length === 0 ? <p className="muted feed-empty">No pulls yet. Go open a crate.</p> : (
-          <ul className="pulls">
-            {feed[tab].map((p) => (
-              <li key={p.id} className="pull">
-                <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} />
-                <div className="grow">
-                  <div className="pull-name">{p.cardName} {p.grade}</div>
-                  <div className="pull-meta"><span className={`tc-${p.tier}`}>{TIER_LABEL[p.tier]}</span><b>{usd(p.valueUsd)}</b><span className={`tag${p.crateKind === "ticket" ? " gold" : ""}`}>{p.crateKind === "ticket" ? "Ticket crate" : "Street crate"}</span></div>
-                  <div className="pull-by muted"><span className="mono">{p.collector}</span><span>{timeAgo(p.at)}</span></div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+          </div>
+        )
+      ) : feed[tab].length === 0 ? <div className="shelf-empty">No pulls yet. Go open a crate.</div> : (
+        <>
+        <ul className="shelf" key={tab} ref={shelf}>
+          {feed[tab].map((p, i) => (
+            <li key={p.id} className="shelf-item" style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}>
+              <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} name={p.cardName} size="xl" />
+              <div className="shelf-meta">
+                <p className="shelf-name">{p.cardName}</p>
+                <p className="shelf-sub"><span className={`tier-name tc-${p.tier}`}>{TIER_LABEL[p.tier]}</span><span>{p.grade}</span></p>
+                <p className="shelf-val num">{usd(p.valueUsd)}</p>
+                <p className="shelf-by"><span className="mono">{p.collector}</span><span>{timeAgo(p.at)}</span></p>
+                <span className={p.crateKind === "ticket" ? "tag gold" : "tag"}>{p.crateKind === "ticket" ? "Ticket crate" : "Street crate"}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="wrap paddles hide-phone">
+          <button className="icon-btn" onClick={() => page(-1)} aria-label="Scroll back"><IconChevronLeft size={18} /></button>
+          <button className="icon-btn" onClick={() => page(1)} aria-label="Scroll forward"><IconChevronRight size={18} /></button>
+        </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Desktop hero: the latest pulls, one at a time, like notifications landing next to the globe. */
+export function PullTicker({ feed }: { feed: Feed | null }) {
+  const [i, setI] = useState(0);
+  const list = feed?.recent ?? [];
+  useEffect(() => {
+    if (list.length < 2) return;
+    const t = setInterval(() => setI((x) => x + 1), 4500);
+    return () => clearInterval(t);
+  }, [list.length]);
+  if (list.length === 0) return null;
+  const p = list[i % list.length];
+  return (
+    <div className="ticker hide-phone" aria-live="polite">
+      <div className="ticker-in" key={p.id}>
+        <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} size="sm" />
+        <div className="grow">
+          <p className="ticker-top"><span className="live-dot" /><span className="mono">{p.collector}</span> pulled<span className="ticker-ago">{timeAgo(p.at)}</span></p>
+          <p className="ticker-card">{p.cardName} <span className="muted">{p.grade}</span></p>
+        </div>
+        <b className={`ticker-val num tc-${p.tier}`}>{usd(p.valueUsd)}</b>
       </div>
     </div>
   );

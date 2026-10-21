@@ -3,89 +3,169 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
-import { pickCity, setCity, useCity } from "@/lib/cityStore";
+import { setCity } from "@/lib/cityStore";
 import { usd } from "@/lib/format";
-import type { VaultStats } from "@/lib/types";
+import type { Feed, VaultStats } from "@/lib/types";
 import { CitySwap } from "./CitySwap";
 import { ConnectSheet } from "./ConnectSheet";
+import { SiteFooter } from "./Docs";
 import { openFilm } from "./Film";
-import { PullsFeed, useFeed } from "./PullsFeed";
+import { CrateGlyph, IconChevronRight, IconPlay, Shard, Ticket } from "./Icons";
+import { Mark } from "./Logo";
+import { PullsShowcase } from "./PullsFeed";
 import { QrCard } from "./QrCard";
+import { CardThumb } from "./CardThumb";
+import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
-/** A number that ticks in whenever it changes. */
-function Tick({ v }: { v: string }) {
-  return <b key={v} className="tick">{v}</b>;
+export function WatchButton({ label = "Watch the film", className = "btn btn-lg btn-gray" }: { label?: string; className?: string }) {
+  return <button className={className} onClick={openFilm}><IconPlay size={15} />{label}</button>;
 }
 
-export function WatchButton({ className = "" }: { className?: string }) {
+function ConnectButton({ className = "btn btn-lg" }: { className?: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <button className={`watch ${className}`} onClick={openFilm}>
-      <span className="watch-play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 2.5v11L13 8z" fill="#fff" /></svg></span>
-      <span className="watch-text"><b>Watch the film</b><small>See how CardQuest works</small></span>
-    </button>
+    <>
+      <button className={className} onClick={() => setOpen(true)}>Connect wallet to play</button>
+      {open && <ConnectSheet onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
-/** Desktop overlays around the map: pitch + QR on the left, live pulls on the right, cities and live stats along the bottom. */
-export function HomePanels() {
+/** The pitch over the globe: one line of status, the headline, one sentence, two buttons. */
+export function HeroCopy() {
   const { user, balances, loading } = useAuth();
-  const feed = useFeed();
-  const city = useCity();
-  const [vault, setVault] = useState<VaultStats | null>(null);
-  const [connect, setConnect] = useState(false);
-  const [exploring, setExploring] = useState(false);
+  const walletBrowser = useInWalletBrowser();
   const asked = useRef(false);
-
   useEffect(() => {
-    void fetch("/api/vault").then((r) => (r.ok ? r.json() : null)).then((v: VaultStats | null) => v && setVault(v)).catch(() => undefined);
     if (asked.current) return;
     asked.current = true;
     void fetch("/api/where").then((r) => r.json()).then((j: { city: string | null }) => { if (j.city) setCity(j.city, false); }).catch(() => undefined);
   }, []);
-
-  const cityBar = useRef<HTMLElement>(null);
-  // Keep the order stable (so a pill never jumps under the cursor) and scroll the selected one into view.
-  useEffect(() => { cityBar.current?.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); }, [city]);
   return (
-    <>
-      <div className={exploring ? "desk-columns exploring" : "desk-columns"}>
-        <section className="desk-panel desk-left">
-          <h1 className="desk-title">Graded cards are dropping in <CitySwap /></h1>
-          <p className="desk-lede">Crates land on the streets around you. Walk to one, open it on your phone, and a real graded card could be yours.</p>
-          {!loading && !user && <button className="pill primary" onClick={() => setConnect(true)}>Connect wallet to play</button>}
+    <div className="hero-copy">
+      <p className="hero-live"><span className="live-dot" />Live in {SERVICE_CITIES.length} cities</p>
+      <h1 className="hero-title">Graded cards are dropping in <CitySwap /></h1>
+      <p className="hero-lede">Crates land on the streets around you. Walk to one, open it on your phone, and a real graded card could be yours.</p>
+      {walletBrowser && !user ? <WalletBrowserNotice /> : (
+        <div className="hero-actions">
+          {!loading && !user && <ConnectButton />}
           {user && balances && (
-            <div className="desk-me">
-              <div><span className="eyebrow">Shards</span><b>◆ {balances.shards}<small> / 10</small></b><i className="bar"><i style={{ width: `${balances.shards * 10}%` }} /></i></div>
-              <div><span className="eyebrow">Tickets</span><b className="gold">🎟 {balances.tickets}<small> / 5</small></b></div>
-            </div>
+            <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
+              <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ 10 shards</small></span>
+              <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ 5 tickets</small></span>
+            </Link>
           )}
-          <WatchButton className="desk-watch" />
-          <QrCard />
-          <p className="desk-foot">You have to be next to a crate to open it, so bring your phone.</p>
-          <p className="desk-foot desk-legal">18+ · <Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/safe-play">Safe play</Link> · <Link href="/vault">Odds</Link></p>
-        </section>
-        <section className="desk-panel desk-side"><PullsFeed feed={feed} /></section>
-      </div>
-
-      <footer className="desk-bottom">
-        <div className="desk-bottom-row">
-          <nav className="desk-cities" aria-label="Launch cities" ref={cityBar}>
-            <ol>{SERVICE_CITIES.map((c) => <li key={c.name}><button className={c.name === city ? "on" : ""} aria-current={c.name === city ? "true" : undefined} onClick={() => pickCity(c.name)}>{c.name}</button></li>)}</ol>
-          </nav>
-          <button className="desk-explore" aria-pressed={exploring} onClick={() => setExploring((x) => !x)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d={exploring ? "M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" : "M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-            {exploring ? "Show panels" : "Explore the map"}
-          </button>
+          <WatchButton label="How it works" />
         </div>
-        <ul className="desk-strip">
-          <li><span className="live-dot" /><Tick v={String(SERVICE_CITIES.length)} />launch cities live</li>
-          <li><Tick v={feed ? feed.totals.collectors.toLocaleString("en-US") : "–"} />collectors</li>
-          <li><Tick v={feed ? feed.totals.cardsPulled.toLocaleString("en-US") : "–"} />cards pulled</li>
-          <li><Tick v={feed ? usd(feed.totals.wonUsd) : "–"} />won by players</li>
-          <li><Tick v={vault ? String(vault.cardsInVault) : "–"} />cards in the vault <Link href="/vault" className="desk-vault">See them ↗</Link></li>
-        </ul>
-      </footer>
-      {connect && <ConnectSheet onClose={() => setConnect(false)} />}
-    </>
+      )}
+    </div>
+  );
+}
+
+function Stat({ value, label, children }: { value: string; label: string; children?: React.ReactNode }) {
+  return <div className="bignum"><b key={value} className="num tick">{value}</b><span>{label}</span>{children}</div>;
+}
+
+function Numbers({ feed, vault }: { feed: Feed | null; vault: VaultStats | null }) {
+  const n = (x: number) => x.toLocaleString("en-US");
+  return (
+    <div className="bignums">
+      <Stat value={feed ? usd(feed.totals.wonUsd) : "–"} label="won by players" />
+      <Stat value={feed ? n(feed.totals.cardsPulled) : "–"} label="cards pulled" />
+      <Stat value={feed ? n(feed.totals.collectors) : "–"} label="collectors" />
+      <Stat value={vault ? n(vault.cardsInVault) : "–"} label="cards in the vault"><Link href="/vault" className="more">See them<IconChevronRight size={14} /></Link></Stat>
+    </div>
+  );
+}
+
+const STEPS = [
+  { t: "Connect a wallet", d: "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction.", art: "wallet" },
+  { t: "Walk to a crate", d: `Crates drop on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within 40 metres and it unlocks.`, art: "walk" },
+  { t: "Open it", d: "Pull a graded card, sent straight to your wallet. No card this time? You get shards toward a ticket crate.", art: "open" },
+] as const;
+
+function StepArt({ art }: { art: (typeof STEPS)[number]["art"] }) {
+  if (art === "wallet") return (
+    <div className="art art-wallet" aria-hidden="true">
+      <div className="art-phone"><Mark size={30} /><span className="art-line" /><span className="art-line short" /><span className="art-btn">Sign message</span></div>
+    </div>
+  );
+  if (art === "walk") return (
+    <div className="art art-walk" aria-hidden="true">
+      <span className="art-radius" /><span className="art-crate"><CrateGlyph size={34} /></span><span className="art-path" /><span className="art-you" /><span className="art-dist">40 m</span>
+    </div>
+  );
+  return (
+    <div className="art art-open" aria-hidden="true">
+      <span className="art-glow" />
+      <div className="art-slab"><CardThumb tier="rare" grade="PSA 10" size="md" /></div>
+      <span className="art-shards"><Shard size={18} /><Shard size={14} /></span>
+    </div>
+  );
+}
+
+/** Everything below the globe: the real cards, the numbers, how to play, the phone hand-off and the footer. */
+export function HomeSections({ feed }: { feed: Feed | null }) {
+  const { user, loading } = useAuth();
+  const [vault, setVault] = useState<VaultStats | null>(null);
+  useEffect(() => { void fetch("/api/vault").then((r) => (r.ok ? r.json() : null)).then((v: VaultStats | null) => v && setVault(v)).catch(() => undefined); }, []);
+  return (
+    <div className="sections">
+      <section className="sec sec-pulls" id="pulls">
+        <div className="wrap center">
+          <p className="kicker"><span className="live-dot" />Live pulls</p>
+          <h2 className="sec-title">Real cards, pulled on real streets.</h2>
+          <p className="sec-lede">Every prize is a professionally graded card from a public vault, sent to the winner&apos;s wallet.</p>
+        </div>
+        <PullsShowcase feed={feed} />
+        <div className="wrap"><Numbers feed={feed} vault={vault} /></div>
+      </section>
+
+      <section className="sec sec-how" id="how-it-works">
+        <div className="wrap center">
+          <p className="kicker">How it works</p>
+          <h2 className="sec-title">Three steps, one walk.</h2>
+        </div>
+        <div className="wrap">
+          <ol className="steps3">
+            {STEPS.map((s, i) => (
+              <li key={s.t} className="tile">
+                <StepArt art={s.art} />
+                <div className="tile-copy"><span className="step-n">{i + 1}</span><h3>{s.t}</h3><p>{s.d}</p></div>
+              </li>
+            ))}
+          </ol>
+          <div className="sec-actions">
+            <WatchButton label="Watch the film" />
+            <Link href="/how" className="link-more">Read the full guide<IconChevronRight size={15} /></Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="sec sec-phone hide-phone">
+        <div className="wrap">
+          <div className="tile phone-tile">
+            <div className="phone-copy">
+              <p className="kicker">Made for the walk</p>
+              <h2 className="sec-title left">Crates open on your phone.</h2>
+              <p className="sec-lede left">You have to be next to a crate to open it, so bring your phone. CardQuest runs in its browser.</p>
+            </div>
+            <QrCard className="qr-card big" />
+          </div>
+        </div>
+      </section>
+
+      <section className="sec sec-cta">
+        <div className="wrap center">
+          <div className="cta-mark"><CrateGlyph size={64} /></div>
+          <h2 className="sec-title">Your first crate is waiting.</h2>
+          <p className="sec-lede">Free to play. 18+. Play where it&apos;s safe and legal.</p>
+          <div className="sec-actions">
+            {!loading && !user ? <ConnectButton /> : <a href="#top" className="btn btn-lg" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Back to the map</a>}
+          </div>
+        </div>
+      </section>
+      <SiteFooter />
+    </div>
   );
 }

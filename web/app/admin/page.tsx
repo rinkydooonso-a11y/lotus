@@ -44,7 +44,7 @@ export default function Admin() {
 
   return (
     <div className="docs wide">
-      <h1>Admin <em>console.</em></h1>
+      <h1>Admin console</h1>
       <h2>Odds (parts per 1,000,000)</h2>
       <div className="card">
         {odds.map((r, i) => (

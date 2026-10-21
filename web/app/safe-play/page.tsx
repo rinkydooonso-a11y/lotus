@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "Safe play · CardQuest", description
 
 export default function SafePlay() {
   return (
-    <div className="docs">
+    <div className="docs prose">
       <h1>Safe play</h1>
       <p>CardQuest sends you outside. A crate is never worth a risk. Please read this before you play.</p>
 
