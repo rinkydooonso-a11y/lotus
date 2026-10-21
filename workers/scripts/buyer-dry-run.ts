@@ -1,77 +1,41 @@
 /**
  * READ-ONLY check before the card buyer touches real money. Sends nothing and needs no key.
  *
- *   cd workers && SOLANA_RPC_URL=<mainnet Helius URL> HOT_WALLET_ADDRESS=... [MAGIC_EDEN_API_KEY=...] \
- *     npx tsx scripts/buyer-dry-run.ts
+ *   cd workers && SOLANA_RPC_URL=<mainnet Helius URL> HOT_WALLET_ADDRESS=... \
+ *     BUY_COLLECTION_ADDRESS=<Collector Crypt Core collection> npx tsx scripts/buyer-dry-run.ts
  *
- * 1. Reads a few pages of Collector Crypt listings from Magic Eden and, for listings from different
- *    sellers, what DAS says on chain: interface, verified collection, authorities, traits.
- * 2. Counts the collection's assets (getAssetsByGroup), as one cross-check of the pinned address.
- * 3. Asks Magic Eden to build a buy transaction for the cheapest card (never signed or sent) and
- *    prints each instruction's program and discriminator, and whether our allowlist accepts it.
+ * 1. Reads Collector Crypt marketplace listings (USDC) and prints the cheapest few.
+ * 2. For the cheapest card under the cap, builds the buy_core transaction (never signed or sent),
+ *    prints each instruction, checks our allowlist accepts it, and simulates it. Simulation needs
+ *    the hot wallet to hold enough USDC and some SOL; without that it fails with a balance error,
+ *    which is expected on an unfunded wallet.
  */
-import { Connection, PublicKey, TransactionMessage, VersionedTransaction, type AddressLookupTableAccount } from '@solana/web3.js';
+import { Connection, VersionedTransaction } from '@solana/web3.js';
+import { TransactionMessage } from '@solana/web3.js';
 import { checkBuyInstructions } from '../src/buyerGateway.js';
-import { createMagicEden } from '../src/magicEden.js';
+import { createBuyCoreBuilder, createCollectorCrypt } from '../src/collectorCrypt.js';
+import { jupiterSolUsd } from '../src/magicEden.js';
 
 const rpc = process.env.SOLANA_RPC_URL!;
 const hot = process.env.HOT_WALLET_ADDRESS!;
-if (!rpc || !hot) throw new Error('SOLANA_RPC_URL and HOT_WALLET_ADDRESS are required');
-
-async function das(method: string, params: Record<string, unknown>): Promise<any> {
-  const res = await fetch(rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-  const body = (await res.json()) as { result?: unknown; error?: { message?: string } };
-  if (body.error) throw new Error(`${method}: ${body.error.message}`);
-  return body.result;
-}
+const collection = process.env.BUY_COLLECTION_ADDRESS!;
+if (!rpc || !hot || !collection) throw new Error('SOLANA_RPC_URL, HOT_WALLET_ADDRESS and BUY_COLLECTION_ADDRESS are required');
+const maxUsd = Number(process.env.BUY_MAX_USD_PER_CARD ?? 25);
 
 async function main() {
-  const me = createMagicEden({ collection: 'collector_crypt', apiKey: process.env.MAGIC_EDEN_API_KEY, pages: 3, requiredTraits: {} });
-  const listings = await me.listings();
-  console.log(`listings read: ${listings.length}`);
-  const traitKeys = new Map<string, Set<string>>();
-  for (const l of listings) for (const [k, v] of Object.entries(l.attributes)) {
-    if (!traitKeys.has(k)) traitKeys.set(k, new Set());
-    if (traitKeys.get(k)!.size < 8) traitKeys.get(k)!.add(v);
+  const solUsd = await jupiterSolUsd();
+  const listings = await createCollectorCrypt({ collection, pages: 3 }).listings(solUsd);
+  console.log(`listings read: ${listings.length} (SOL/USD ${solUsd})`);
+  for (const l of listings.slice(0, 5)) {
+    console.log(JSON.stringify({ mint: l.mint, seller: l.seller, usdc: Number(l.priceUsdc) / 1e6, attributes: l.attributes }));
   }
-  console.log('Magic Eden trait names and sample values:', JSON.stringify(Object.fromEntries([...traitKeys].map(([k, v]) => [k, [...v]])), null, 1));
-
-  const sellers = new Set<string>();
-  const sample = listings.filter((l) => !sellers.has(l.seller) && sellers.add(l.seller)).slice(0, 6);
-  const collections = new Map<string, number>();
-  for (const l of sample) {
-    const a = await das('getAsset', { id: l.mint });
-    const coll = (a.grouping ?? []).find((g: any) => g.group_key === 'collection');
-    collections.set(coll?.group_value ?? 'none', (collections.get(coll?.group_value ?? 'none') ?? 0) + 1);
-    console.log(JSON.stringify({
-      mint: l.mint, seller: l.seller, priceSol: Number(l.priceLamports) / 1e9, interface: a.interface,
-      collection: coll?.group_value ?? null, collectionVerified: coll?.verified ?? null,
-      authorities: (a.authorities ?? []).map((x: any) => x.address),
-      // If cards have no verified collection, a verified creator is the next trust anchor to compare.
-      creators: (a.creators ?? []).map((x: any) => `${x.address}${x.verified ? ' (verified)' : ''}`),
-      compressed: a.compression?.compressed ?? false,
-      onChainTraits: Object.fromEntries((a.content?.metadata?.attributes ?? []).map((x: any) => [x.trait_type, x.value])),
-    }));
-  }
-  for (const [c, n] of collections) {
-    if (c === 'none') continue;
-    const r = await das('getAssetsByGroup', { groupKey: 'collection', groupValue: c, page: 1, limit: 1000 });
-    console.log(`collection ${c}: seen on ${n} sampled listings; getAssetsByGroup page 1 has ${r.items?.length ?? 0} items (DAS page count, not the collection size)`);
-  }
-
-  const cheapest = listings.find((l) => /card/i.test(l.attributes.Type ?? l.attributes.Category ?? '')) ?? listings[0];
-  if (!cheapest) return;
-  console.log(`building (not sending) a buy for ${cheapest.mint} at ${Number(cheapest.priceLamports) / 1e9} SOL`);
+  const cheapest = listings.find((l) => l.attributes.Type === 'Card' && Number(l.priceUsdc) / 1e6 <= maxUsd);
+  if (!cheapest) return console.log(`no card listing at or under $${maxUsd}`);
+  console.log(`building (not sending) a buy for ${cheapest.mint} at $${Number(cheapest.priceUsdc) / 1e6}`);
+  const conn = new Connection(rpc, 'confirmed');
   try {
-    const tx = VersionedTransaction.deserialize(await me.buildBuyTx(cheapest, hot));
-    const conn = new Connection(rpc, 'confirmed');
-    const luts: AddressLookupTableAccount[] = [];
-    for (const l of tx.message.addressTableLookups) {
-      const r = await conn.getAddressLookupTable(l.accountKey);
-      if (r.value) luts.push(r.value);
-    }
-    const ixs = TransactionMessage.decompile(tx.message, { addressLookupTableAccounts: luts }).instructions;
-    console.log(`fee payer is hot wallet: ${tx.message.staticAccountKeys[0]?.equals(new PublicKey(hot))}`);
+    const tx = VersionedTransaction.deserialize(await createBuyCoreBuilder({ connection: conn, collection })(cheapest, hot));
+    const ixs = TransactionMessage.decompile(tx.message).instructions;
     for (const ix of ixs) console.log(`  ${ix.programId.toBase58()} ${ix.data.subarray(0, 8).toString('hex')} (${ix.keys.length} accounts)`);
     try {
       checkBuyInstructions(ixs);
@@ -79,6 +43,8 @@ async function main() {
     } catch (err) {
       console.log(`allowlist: REFUSES this transaction: ${(err as Error).message}`);
     }
+    const sim = await conn.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' });
+    console.log(`simulation: err=${JSON.stringify(sim.value.err)} unitsConsumed=${sim.value.unitsConsumed ?? '?'}`);
   } catch (err) {
     console.log(`could not build a buy transaction: ${(err as Error).message}`);
   }

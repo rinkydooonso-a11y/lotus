@@ -451,7 +451,7 @@ export class PgBuyerStore implements BuyerStore {
         await client.query(
           `INSERT INTO treasury_events (kind, amount, asset, usd_value, tx_signature, note, inventory_item_id)
            VALUES ('purchase', $1::numeric / 1e9, 'SOL', $2, $3, $4, $5)`,
-          [p.price_lamports, costUsd.toFixed(2), p.tx_signature, `bought ${p.card_name} on Magic Eden`, itemId],
+          [p.price_lamports, costUsd.toFixed(2), p.tx_signature, `bought ${p.card_name} on Collector Crypt`, itemId],
         );
       }
       await client.query('COMMIT');

@@ -12,7 +12,7 @@ import {
 import { loadConfig, parseSecretKey } from './config.js';
 import { collectionOf, dasGetAssetsByOwner } from './das.js';
 import { runInventorySync } from './inventorySync.js';
-import { Keypair } from '@solana/web3.js';
+import { Connection, Keypair } from '@solana/web3.js';
 import { acquireSingletonLock, PgBuyerStore, PgClaimLog, PgSyncStore, PgTopUpStore, PgTxLog } from './pg.js';
 import { createSquadsGateway } from './squads.js';
 import { runTopUpTick } from './topUp.js';
@@ -20,7 +20,9 @@ import { runFeeClaimTick } from './feeClaimer.js';
 import { createPumpFeeGateway } from './pumpFees.js';
 import { runBuyTick } from './cardBuyer.js';
 import { createBuyerGateway } from './buyerGateway.js';
-import { createMagicEden, jupiterSolUsd } from './magicEden.js';
+import { jupiterSolUsd } from './magicEden.js';
+import { createBuyCoreBuilder, createCollectorCrypt } from './collectorCrypt.js';
+import { createJupiterSwap } from './jupiterSwap.js';
 import { dasGetAsset } from './das.js';
 import { MAX_QUEUE_ATTEMPTS, runPrizeSenderTick } from './prizeSender.js';
 import { createSolanaChain } from './solanaChain.js';
@@ -249,19 +251,16 @@ async function main() {
     let deps: Parameters<typeof runBuyTick>[0] | null = null;
     loops.push(loop('card-buyer', config.BUY_INTERVAL_MS, async () => {
       if (!deps) {
-        const market = createMagicEden({
-          collection: config.BUY_COLLECTION,
-          apiKey: config.MAGIC_EDEN_API_KEY,
-          pages: config.BUY_LISTING_PAGES,
-          requiredTraits: config.BUY_REQUIRED_TRAITS,
-        });
+        const market = createCollectorCrypt({ collection: config.BUY_COLLECTION_ADDRESS!, pages: config.BUY_LISTING_PAGES });
+        const buildBuyTx = createBuyCoreBuilder({ connection: new Connection(config.SOLANA_RPC_URL, 'confirmed'), collection: config.BUY_COLLECTION_ADDRESS! });
         const gateway = await createBuyerGateway({
           rpcUrl: config.SOLANA_RPC_URL,
           hot: Keypair.fromSecretKey(parseSecretKey(config.HOT_WALLET_SECRET_KEY)),
           multisigAddress: config.SQUADS_MULTISIG_ADDRESS!,
           spendingLimitAddress: config.BUYER_SPENDING_LIMIT!,
           allowMainnet: config.LOTUS_ALLOW_MAINNET,
-          buildBuyTx: (l, buyer) => market.buildBuyTx(l, buyer),
+          buildBuyTx,
+          buildSwapTx: createJupiterSwap({ slippageBps: config.BUY_SWAP_SLIPPAGE_BPS }),
           solUsd: () => jupiterSolUsd(),
           solUsdBounds: [config.SOL_USD_MIN, config.SOL_USD_MAX],
           getOwner: async (mint) => (await chain.getAsset(mint))?.owner ?? null,
@@ -283,7 +282,7 @@ async function main() {
           updateAuthority: config.BUY_UPDATE_AUTHORITY!,
         });
         log.info('card buyer on', {
-          spendingLimit: config.BUYER_SPENDING_LIMIT, limitSol: gateway.limit.amountSol, period: gateway.limit.period, collection: config.BUY_COLLECTION,
+          spendingLimit: config.BUYER_SPENDING_LIMIT, limitSol: gateway.limit.amountSol, period: gateway.limit.period, collection: config.BUY_COLLECTION_ADDRESS,
         });
         deps = {
           store: new PgBuyerStore(db),
@@ -299,6 +298,7 @@ async function main() {
             maxLamportsPerCard: BigInt(Math.round(config.BUY_MAX_SOL_PER_CARD * 1e9)),
             maxCardsPerTick: config.BUY_MAX_CARDS_PER_TICK,
             maxOverheadBps: config.BUY_MAX_OVERHEAD_BPS,
+            maxPriceUsd: config.BUY_MAX_USD_PER_CARD,
           },
           gasReserveLamports: BigInt(Math.round(config.BUY_GAS_RESERVE_SOL * 1e9)),
           weeklyMaxLamports: BigInt(Math.round(config.BUY_WEEKLY_MAX_SOL * 1e9)),

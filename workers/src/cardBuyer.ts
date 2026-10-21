@@ -19,6 +19,8 @@ export interface Listing {
   mint: string;
   seller: string;
   priceLamports: bigint;
+  /** Exact price in USDC base units (6 decimals), for marketplaces that price in USDC. */
+  priceUsdc?: bigint;
   name: string;
   image: string | null;
   attributes: Record<string, string>;
@@ -50,6 +52,8 @@ export interface BuyPolicy {
   maxCardsPerTick: number;
   /** Fees and royalties allowed on top of the listing price, in basis points. */
   maxOverheadBps: number;
+  /** Hard per-card cap in USD, when the marketplace prices in USDC. */
+  maxPriceUsd?: number;
 }
 
 export function parseUsd(raw: string | undefined): number | null {
@@ -66,7 +70,8 @@ export function classify(listing: Listing, policy: BuyPolicy, solUsd: number): C
   const valueUsd = parseUsd(listing.attributes[policy.valueTrait]);
   if (valueUsd === null) return null;
   if (listing.priceLamports <= 0n || listing.priceLamports > policy.maxLamportsPerCard) return null;
-  const priceUsd = (Number(listing.priceLamports) / 1e9) * solUsd;
+  const priceUsd = listing.priceUsdc !== undefined ? Number(listing.priceUsdc) / 1e6 : (Number(listing.priceLamports) / 1e9) * solUsd;
+  if (policy.maxPriceUsd !== undefined && priceUsd > policy.maxPriceUsd) return null;
   if (priceUsd > valueUsd * policy.maxPriceToValue) return null;
   let tier: Tier | null = null;
   for (const t of TIERS) if (valueUsd >= policy.tierMinUsd[t]) tier = t;
@@ -162,7 +167,7 @@ export interface BuyerGateway {
 
 export interface Market {
   /** Current listings, cheapest first. */
-  listings(): Promise<Listing[]>;
+  listings(solUsd: number): Promise<Listing[]>;
 }
 
 export interface BuyDeps {
@@ -215,7 +220,7 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
   const short = TIERS.some((t) => policy.targets[t] > (available[t] ?? 0));
   if (!short) return { kind: 'idle', reason: 'stocked' };
   const solUsd = await gateway.solUsd();
-  const [listings, owned] = await Promise.all([deps.market.listings(), store.ownedMints()]);
+  const [listings, owned] = await Promise.all([deps.market.listings(solUsd), store.ownedMints()]);
   // Plan with spares: a pick that fails the on-chain check is replaced by the next-cheapest one.
   const needs = needsByTier(available, policy);
   const picks = planBuys(available, listings, owned, { ...policy, maxCardsPerTick: policy.maxCardsPerTick * 4 }, solUsd, 3);
