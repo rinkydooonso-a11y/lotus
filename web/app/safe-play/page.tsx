@@ -35,10 +35,11 @@ export default function SafePlay() {
       <ul>
         <li>Connecting only needs a sign-in message. Reject anything that asks you to approve a transaction you do not understand.</li>
         <li>Use a wallet you are comfortable receiving prizes in.</li>
+        <li>Only buy the coin if you understand the risk and can afford to lose it. It is not required to play unless the site says so, and it is never an investment.</li>
       </ul>
 
       <h2>Play fair</h2>
-      <p>Fake GPS and teleporting are against the rules and get accounts frozen. Please play for real, safely.</p>
+      <p>Fake GPS, teleporting, VPNs, and running multiple wallets or devices are against the rules. Accounts can be frozen, and prizes can be held or denied on review. Please play for real, safely.</p>
 
       <h2>Weather and health</h2>
       <p>Skip play in storms, extreme heat or cold, and take breaks and water on long walks.</p>

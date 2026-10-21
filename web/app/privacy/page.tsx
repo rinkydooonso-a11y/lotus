@@ -17,7 +17,7 @@ export default function Privacy() {
         <li><b>Location.</b> Your device location while the map is open, so we can show nearby crates and check you are really there. We keep a short trail of recent pings for anti-cheat and delete pings older than 30 days.</li>
         <li><b>Device and network.</b> A random device ID stored in your browser and your IP address, used to limit abuse and spot one person running many wallets.</li>
         <li><b>Game history.</b> Crates opened, prizes won and sent, shards and tickets.</li>
-        <li><b>Wallet checks.</b> For anti-cheat we may look up public on-chain facts about your wallet, such as its age.</li>
+        <li><b>Wallet checks.</b> For anti-cheat we may look up public on-chain facts about your wallet, such as its age, and, once the coin is live, whether it holds the required amount of the coin to open crates.</li>
         <li><b>Sign-in cookie.</b> A signed cookie keeps you logged in. We use no advertising cookies.</li>
       </ul>
 
