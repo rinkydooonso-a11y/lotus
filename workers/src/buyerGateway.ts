@@ -255,6 +255,8 @@ export async function createBuyerGateway(
     if (got < deficit) throw new Error(`swap would deliver ${got} USDC units, less than the ${deficit} needed`);
     tx.sign([cfg.hot]);
     await sendAndWait(tx, base58.deserialize(tx.signatures[0]!)[0], 'swap');
+    // The buy is a separate transaction: it only goes ahead once the swapped USDC is really there.
+    if ((await usdcBalance(usdcAta)) < need) throw new Error('swap confirmed but the hot wallet USDC balance is still short');
   };
 
   return {
