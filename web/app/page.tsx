@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
-import { HeroCopy, HomeSections } from "@/components/HomePanels";
+import { HeroCopy } from "@/components/HomePanels";
 import { PullTicker, useFeed } from "@/components/PullsFeed";
 import { useScrollLock } from "@/components/Portal";
 import { setExploring, useExploring, useFullMap } from "@/lib/viewStore";
@@ -29,7 +29,6 @@ export default function Home() {
         {!full && <HeroCopy />}
         {!full && <PullTicker feed={feed} />}
       </section>
-      {!full && <HomeSections feed={feed} />}
     </div>
   );
 }
