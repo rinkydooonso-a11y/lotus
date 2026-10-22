@@ -75,7 +75,7 @@ function Numbers({ feed, vault }: { feed: Feed | null; vault: VaultStats | null 
       <Stat value={feed ? usd(feed.totals.wonUsd) : "–"} label="won by players" />
       <Stat value={feed ? n(feed.totals.cardsPulled) : "–"} label="cards pulled" />
       <Stat value={feed ? n(feed.totals.collectors) : "–"} label="collectors" />
-      <Stat value={vault ? n(vault.cardsInVault) : "–"} label="cards in the vault"><Link href="/vault" className="more">See them<IconChevronRight size={14} /></Link></Stat>
+      <Stat value={vault ? n(vault.cardsInVault) : "–"} label="cards in the vault"><a href={LINKS.vault} target="_blank" rel="noopener noreferrer" className="more">See them<IconChevronRight size={14} /></a></Stat>
     </div>
   );
 }
