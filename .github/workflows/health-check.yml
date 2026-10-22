@@ -1,0 +1,36 @@
+# Emails the repo owner when the site or the Fly worker looks down.
+#
+# Every 10 minutes this calls /api/health, which answers 503 when the database, Redis, the worker
+# (no vault snapshot for 15 minutes) or the prize queue (a prize stuck for 15 minutes) is unhealthy.
+# A failed run makes GitHub email the person who last edited this schedule (Settings > Notifications >
+# Actions must allow failed-workflow emails, which is the default).
+#
+# Needs one repository variable: HEALTH_URL, for example https://<your site>/api/health
+# (Settings > Secrets and variables > Actions > Variables). Without it the job is skipped.
+name: health-check
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    if: ${{ vars.HEALTH_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/health
+        env:
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+        run: |
+          # Two retries, so one slow request or a deploy blip doesn't send an email.
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 20 --retry 2 --retry-delay 15 --retry-all-errors "$HEALTH_URL" || echo 000)
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::health check returned HTTP $code"
+            exit 1
+          fi
