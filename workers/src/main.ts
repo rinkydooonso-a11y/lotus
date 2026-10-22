@@ -18,13 +18,14 @@ import { Connection, Keypair } from '@solana/web3.js';
 import { acquireSingletonLock, PgBuyerStore, PgClaimLog, PgSyncStore, PgTopUpStore, PgTxLog } from './pg.js';
 import { createSquadsGateway } from './squads.js';
 import { runTopUpTick } from './topUp.js';
-import { runFeeClaimTick } from './feeClaimer.js';
+import { runCreatorFeeTick, runFeeClaimTick } from './feeClaimer.js';
 import { createPumpFeeGateway } from './pumpFees.js';
+import { createCreatorFeeGateway } from './creatorFees.js';
 import { runBuyTick } from './cardBuyer.js';
 import { createBuyerGateway } from './buyerGateway.js';
 import { jupiterSolUsd } from './magicEden.js';
 import { createBuyCoreBuilder, createCollectorCrypt } from './collectorCrypt.js';
-import { createJupiterSwap } from './jupiterSwap.js';
+import { createJupiterSwap, createJupiterSwapToSol } from './jupiterSwap.js';
 import { dasGetAsset } from './das.js';
 import { MAX_QUEUE_ATTEMPTS, runPrizeSenderTick } from './prizeSender.js';
 import { createSolanaChain } from './solanaChain.js';
@@ -227,10 +228,44 @@ async function main() {
     }, controller.signal));
   }
 
-  const feesOn = Boolean(config.PUMP_COIN_MINT && config.FEE_CLAIMER_SECRET_KEY);
-  if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY');
+  const oneWalletFees = config.ONE_WALLET_FEES === 'yes';
+  const feesOn = oneWalletFees || Boolean(config.PUMP_COIN_MINT && config.FEE_CLAIMER_SECRET_KEY);
+  if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY (or ONE_WALLET_FEES=yes)');
   if (mode === 'all' && !feesOn) log.info('fee claimer disabled: PUMP_COIN_MINT / FEE_CLAIMER_SECRET_KEY not set');
-  if ((mode === 'all' || mode === 'fee-claimer') && feesOn) {
+  if ((mode === 'all' || mode === 'fee-claimer') && oneWalletFees) {
+    let deps: Parameters<typeof runCreatorFeeTick>[0] | null = null;
+    loops.push(loop('fee-claimer', config.FEE_CLAIM_INTERVAL_MS, async () => {
+      if (!deps) {
+        const gateway = await createCreatorFeeGateway({
+          rpcUrl: config.SOLANA_RPC_URL,
+          coinMint: config.PUMP_COIN_MINT!,
+          wallet: Keypair.fromSecretKey(parseSecretKey(config.HOT_WALLET_SECRET_KEY)),
+          allowMainnet: config.LOTUS_ALLOW_MAINNET,
+          priorityFeeMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS,
+          buildSwapIn: createJupiterSwapToSol({ slippageBps: config.FEE_SWAP_SLIPPAGE_BPS }),
+          maxPriceImpact: config.FEE_SWAP_MAX_IMPACT_BPS / 10_000,
+        });
+        log.info('fee claimer on (one wallet)', { coin: config.PUMP_COIN_MINT });
+        deps = {
+          gateway,
+          claims: new PgClaimLog(db),
+          minClaim: BigInt(config.FEE_CLAIM_MIN_BASE_UNITS),
+          minSwap: BigInt(config.FEE_SWAP_MIN_BASE_UNITS),
+          minGasLamports: BigInt(Math.round(config.FEE_CLAIMER_MIN_GAS_SOL * 1e9)),
+          solUsd: async () => {
+            const p = await jupiterSolUsd();
+            if (!(p >= config.SOL_USD_MIN && p <= config.SOL_USD_MAX)) throw new Error(`SOL price ${p} is outside the sanity range ${config.SOL_USD_MIN}-${config.SOL_USD_MAX}`);
+            return p;
+          },
+          cardFundBps: config.FEE_CARD_FUND_BPS,
+          log,
+        };
+      }
+      const r = await runCreatorFeeTick(deps);
+      if (r.kind !== 'idle') log.info('creator fee tick', r);
+    }, controller.signal));
+  }
+  if ((mode === 'all' || mode === 'fee-claimer') && feesOn && !oneWalletFees) {
     const vault = config.SQUADS_VAULT_ADDRESS!;
     let deps: Parameters<typeof runFeeClaimTick>[0] | null = null;
     loops.push(loop('fee-claimer', config.FEE_CLAIM_INTERVAL_MS, async () => {
@@ -261,8 +296,8 @@ async function main() {
     }, controller.signal));
   }
 
-  const buyerOn = Boolean(config.BUYER_SPENDING_LIMIT);
-  if (mode === 'card-buyer' && !buyerOn) throw new Error('card-buyer needs BUYER_SPENDING_LIMIT and SQUADS_MULTISIG_ADDRESS');
+  const buyerOn = Boolean(config.BUYER_SPENDING_LIMIT) || config.ONE_WALLET_BUYER === 'yes';
+  if (mode === 'card-buyer' && !buyerOn) throw new Error('card-buyer needs BUYER_SPENDING_LIMIT and SQUADS_MULTISIG_ADDRESS (or ONE_WALLET_BUYER=yes)');
   if (mode === 'all' && !buyerOn) log.info('card buyer disabled: BUYER_SPENDING_LIMIT not set');
   if ((mode === 'all' || mode === 'card-buyer') && buyerOn) {
     let deps: Parameters<typeof runBuyTick>[0] | null = null;
@@ -273,8 +308,8 @@ async function main() {
         const gateway = await createBuyerGateway({
           rpcUrl: config.SOLANA_RPC_URL,
           hot: Keypair.fromSecretKey(parseSecretKey(config.HOT_WALLET_SECRET_KEY)),
-          multisigAddress: config.SQUADS_MULTISIG_ADDRESS!,
-          spendingLimitAddress: config.BUYER_SPENDING_LIMIT!,
+          multisigAddress: config.BUYER_SPENDING_LIMIT ? config.SQUADS_MULTISIG_ADDRESS : undefined,
+          spendingLimitAddress: config.BUYER_SPENDING_LIMIT,
           allowMainnet: config.LOTUS_ALLOW_MAINNET,
           buildBuyTx,
           buildSwapTx: createJupiterSwap({ slippageBps: config.BUY_SWAP_SLIPPAGE_BPS }),

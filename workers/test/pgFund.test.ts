@@ -30,6 +30,14 @@ describe.skipIf(!db)('card fund in Postgres', () => {
     expect(rows).toEqual([{ usd: '210.00', kind: 'fee_share' }]);
   });
 
+  it('logs a swap of claimed fees as an "other" treasury event and credits the fund once', async () => {
+    const log = new PgClaimLog(db!);
+    await log.recordClaim({ signature: 'swapA', amount: '1.5', asset: 'SOL', note: 'CARDS swapped', usdValue: '225.00', fundUsd: '157.50', kind: 'other' });
+    const ev = await db!.query(`SELECT kind::text FROM treasury_events WHERE tx_signature = 'swapA'`);
+    expect(ev.rows).toEqual([{ kind: 'other' }]);
+    expect((await db!.query(`SELECT usd::text FROM prize_fund_entries WHERE ref = 'swapA'`)).rows).toEqual([{ usd: '157.50' }]);
+  });
+
   it('charges a purchase to the fund and counts the card in stock at cost', async () => {
     await db!.query(`INSERT INTO prize_fund_entries (kind, usd) VALUES ('seed', 500)`);
     const store = new PgBuyerStore(db!);

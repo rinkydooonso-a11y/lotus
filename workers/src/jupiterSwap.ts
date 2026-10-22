@@ -30,3 +30,36 @@ export function createJupiterSwap(opts: { slippageBps: number; fetchImpl?: typeo
     return Uint8Array.from(Buffer.from(swapTransaction, 'base64'));
   };
 }
+
+/**
+ * Swaps exactly `amount` of `inputMint` into native SOL (fee tokens the wallet has claimed).
+ * `priceImpact` is the quote's own estimate as a fraction; the caller refuses a swap that moves
+ * the price too far, since the pair's token may be thinly traded.
+ */
+export function createJupiterSwapToSol(opts: { slippageBps: number; fetchImpl?: typeof fetch }) {
+  const f = opts.fetchImpl ?? fetch;
+  return async (inputMint: string, amount: bigint, user: string): Promise<{ tx: Uint8Array; minOutLamports: bigint; priceImpact: number }> => {
+    const q = new URLSearchParams({
+      inputMint, outputMint: SOL, amount: amount.toString(), swapMode: 'ExactIn', slippageBps: String(opts.slippageBps),
+    });
+    const qres = await f(`${BASE}/quote?${q}`, { signal: AbortSignal.timeout(15_000) });
+    if (!qres.ok) throw new Error(`Jupiter quote ${qres.status}`);
+    const quote = (await qres.json()) as { inAmount?: string; outAmount?: string; otherAmountThreshold?: string; priceImpactPct?: string; swapMode?: string; inputMint?: string; outputMint?: string };
+    if (quote.swapMode !== 'ExactIn' || quote.inputMint !== inputMint || quote.outputMint !== SOL) throw new Error('Jupiter quote is not the swap we asked for');
+    if (BigInt(quote.inAmount ?? '0') !== amount) throw new Error('Jupiter quote does not swap the amount asked');
+    const minOut = BigInt(quote.otherAmountThreshold ?? '0');
+    if (minOut <= 0n) throw new Error('Jupiter quote promises no SOL');
+    const priceImpact = Number(quote.priceImpactPct);
+    if (!Number.isFinite(priceImpact)) throw new Error('Jupiter quote has no price impact');
+    const sres = await f(`${BASE}/swap`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ quoteResponse: quote, userPublicKey: user, wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!sres.ok) throw new Error(`Jupiter swap ${sres.status}`);
+    const { swapTransaction } = (await sres.json()) as { swapTransaction?: string };
+    if (!swapTransaction) throw new Error('Jupiter returned no transaction');
+    return { tx: Uint8Array.from(Buffer.from(swapTransaction, 'base64')), minOutLamports: minOut, priceImpact };
+  };
+}
