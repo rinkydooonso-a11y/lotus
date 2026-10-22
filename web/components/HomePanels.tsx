@@ -12,7 +12,7 @@ import { CitySwap } from "./CitySwap";
 import { ConnectSheet } from "./ConnectSheet";
 import { SiteFooter } from "./Docs";
 import { openFilm } from "./Film";
-import { CrateGlyph, IconChevronRight, IconPlay, Shard, Ticket } from "./Icons";
+import { CrateGlyph, IconChevronRight, IconClose, IconPlay, Shard, Ticket } from "./Icons";
 import { Mark } from "./Logo";
 import { PullsShowcase } from "./PullsFeed";
 import { QrCard } from "./QrCard";
@@ -106,68 +106,96 @@ function StepArt({ art }: { art: (typeof STEPS)[number]["art"] }) {
   );
 }
 
-/** Everything below the globe: the real cards, the numbers, how to play, the phone hand-off and the footer. */
+type Tab = "pulls" | "how" | "phone" | "more";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "pulls", label: "Live pulls" },
+  { id: "how", label: "How it works" },
+  { id: "phone", label: "Play on phone" },
+  { id: "more", label: "More" },
+];
+
+/** Tabs along the bottom of the globe: each opens its panel over the map, so the home page itself never scrolls. */
 export function HomeSections({ feed }: { feed: Feed | null }) {
   const { user, loading } = useAuth();
+  const [tab, setTab] = useState<Tab | null>(null);
   const [vault, setVault] = useState<VaultStats | null>(null);
   useEffect(() => { void fetch("/api/vault").then((r) => (r.ok ? r.json() : null)).then((v: VaultStats | null) => v && setVault(v)).catch(() => undefined); }, []);
+  useEffect(() => {
+    if (!tab) return;
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setTab(null); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [tab]);
   return (
-    <div className="sections">
-      <section className="sec sec-pulls" id="pulls">
-        <div className="wrap center">
-          <p className="kicker"><span className="live-dot" />Live pulls</p>
-          <h2 className="sec-title">Real cards, pulled on real streets.</h2>
-          <p className="sec-lede">Every prize is a professionally graded card from a public vault, sent to the winner&apos;s wallet.</p>
+    <div className="home-tabs">
+      {tab && (
+        <div className="tab-panel" role="tabpanel">
+          <button className="tab-close" onClick={() => setTab(null)} aria-label="Close"><IconClose size={16} /></button>
+          {tab === "pulls" && (
+            <section className="sec sec-pulls" id="pulls">
+              <div className="wrap center">
+                <p className="kicker"><span className="live-dot" />Live pulls</p>
+                <h2 className="sec-title">Real cards, pulled on real streets.</h2>
+                <p className="sec-lede">Every prize is a professionally graded card from a public vault, sent to the winner&apos;s wallet.</p>
+              </div>
+              <PullsShowcase feed={feed} />
+              <div className="wrap"><Numbers feed={feed} vault={vault} /></div>
+            </section>
+          )}
+          {tab === "how" && (
+            <section className="sec sec-how" id="how-it-works">
+              <div className="wrap center">
+                <p className="kicker">How it works</p>
+                <h2 className="sec-title">Three steps, one walk.</h2>
+              </div>
+              <div className="wrap">
+                <ol className="steps3">
+                  {STEPS.map((s, i) => (
+                    <li key={s.t} className="tile">
+                      <StepArt art={s.art} />
+                      <div className="tile-copy"><span className="step-n">{i + 1}</span><h3>{s.t}</h3><p>{s.d}</p></div>
+                    </li>
+                  ))}
+                </ol>
+                <div className="sec-actions">
+                  <WatchButton label="Watch the film" />
+                  <Link href="/how" className="link-more">Read the full guide<IconChevronRight size={15} /></Link>
+                </div>
+              </div>
+            </section>
+          )}
+          {tab === "phone" && (
+            <section className="sec sec-phone">
+              <div className="wrap">
+                <div className="tile phone-tile">
+                  <div className="phone-copy">
+                    <p className="kicker">Made for the walk</p>
+                    <h2 className="sec-title left">Crates open on your phone.</h2>
+                    <p className="sec-lede left">You have to be next to a crate to open it, so scan the code and play on your phone. CardQuest runs in its browser.</p>
+                  </div>
+                  <QrCard className="qr-card big" />
+                </div>
+              </div>
+            </section>
+          )}
+          {tab === "more" && (
+            <section className="sec sec-cta">
+              <div className="wrap center">
+                <div className="cta-mark"><CrateGlyph size={64} /></div>
+                <h2 className="sec-title">Your first crate is waiting.</h2>
+                <p className="sec-lede">{coinLive ? `Hold $${COIN_HOLD_USD} of ${LINKS.ticker} to open crates.` : "Free to play."} 18+. Play where it&apos;s safe and legal.</p>
+                {!loading && !user && <div className="sec-actions"><ConnectButton /></div>}
+              </div>
+              <SiteFooter />
+            </section>
+          )}
         </div>
-        <PullsShowcase feed={feed} />
-        <div className="wrap"><Numbers feed={feed} vault={vault} /></div>
-      </section>
-
-      <section className="sec sec-how" id="how-it-works">
-        <div className="wrap center">
-          <p className="kicker">How it works</p>
-          <h2 className="sec-title">Three steps, one walk.</h2>
-        </div>
-        <div className="wrap">
-          <ol className="steps3">
-            {STEPS.map((s, i) => (
-              <li key={s.t} className="tile">
-                <StepArt art={s.art} />
-                <div className="tile-copy"><span className="step-n">{i + 1}</span><h3>{s.t}</h3><p>{s.d}</p></div>
-              </li>
-            ))}
-          </ol>
-          <div className="sec-actions">
-            <WatchButton label="Watch the film" />
-            <Link href="/how" className="link-more">Read the full guide<IconChevronRight size={15} /></Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="sec sec-phone hide-phone">
-        <div className="wrap">
-          <div className="tile phone-tile">
-            <div className="phone-copy">
-              <p className="kicker">Made for the walk</p>
-              <h2 className="sec-title left">Crates open on your phone.</h2>
-              <p className="sec-lede left">You have to be next to a crate to open it, so bring your phone. CardQuest runs in its browser.</p>
-            </div>
-            <QrCard className="qr-card big" />
-          </div>
-        </div>
-      </section>
-
-      <section className="sec sec-cta">
-        <div className="wrap center">
-          <div className="cta-mark"><CrateGlyph size={64} /></div>
-          <h2 className="sec-title">Your first crate is waiting.</h2>
-          <p className="sec-lede">{coinLive ? `Hold $${COIN_HOLD_USD} of ${LINKS.ticker} to open crates.` : "Free to play."} 18+. Play where it&apos;s safe and legal.</p>
-          <div className="sec-actions">
-            {!loading && !user ? <ConnectButton /> : <a href="#top" className="btn btn-lg" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Back to the map</a>}
-          </div>
-        </div>
-      </section>
-      <SiteFooter />
+      )}
+      <nav className="tab-bar" role="tablist" aria-label="More about CardQuest">
+        {TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(tab === t.id ? null : t.id)}>{t.label}</button>
+        ))}
+      </nav>
     </div>
   );
 }

@@ -12,6 +12,8 @@ import { ResultModal } from "./ResultModal";
 import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { LINKS } from "@/lib/links";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
+import { isMobileUA } from "@/lib/auth/phantomDeeplink";
+import { QrCard } from "./QrCard";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconArrowUpRight, IconClose, IconCoin, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
 
@@ -92,6 +94,9 @@ export default function MapView() {
   const lastPing = useRef(0);
   const [fix, setFix] = useState<Fix | null>(null);
   const [geoErr, setGeoErr] = useState<string | null>(null);
+  // Crates only open from a phone: desktop never asks for location and shows a QR hand-off instead.
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => setDesktop(!isMobileUA(navigator.userAgent, navigator.maxTouchPoints)), []);
   const [crates, setCrates] = useState<Crate[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
@@ -202,6 +207,7 @@ export default function MapView() {
 
   // live location
   useEffect(() => {
+    if (desktop) return;
     if (!navigator.geolocation) { setGeoErr("Location isn't available in this browser."); return; }
     const id = navigator.geolocation.watchPosition(
       (p) => { setGeoErr(null); setFix({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); },
@@ -209,7 +215,7 @@ export default function MapView() {
       { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 },
     );
     return () => navigator.geolocation.clearWatch(id);
-  }, []);
+  }, [desktop]);
 
   // player marker + first centering
   useEffect(() => {
@@ -355,8 +361,9 @@ export default function MapView() {
       {/* Tickets are spent by opening, not by a button: the next open after the free one uses one. */}
       {balances && balances.tickets > 0 && <div className="ticket-fab" role="status"><Ticket size={18} />{balances.tickets} extra {balances.tickets === 1 ? "open" : "opens"}</div>}
 
-      {user && geoErr && !(user.isAdmin && !fix) && <div className="map-card"><p className="map-card-line">{geoErr}</p></div>}
-      {user && !fix && (
+      {user && desktop && !fix && <div className="map-card"><QrCard className="qr-card" /></div>}
+      {user && !desktop && geoErr && !(user.isAdmin && !fix) && <div className="map-card"><p className="map-card-line">{geoErr}</p></div>}
+      {user && !desktop && !fix && (
         <div className="map-card">
           {walletBrowser ? <WalletBrowserNotice /> : !geoErr && <p className="map-card-line"><span className="spinner" />Finding you…</p>}
           {user.isAdmin && (
