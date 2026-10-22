@@ -5,7 +5,7 @@ import { Providers } from "@/components/Providers";
 import { Header } from "@/components/Header";
 import { FilmHost } from "@/components/Film";
 
-export const metadata: Metadata = { title: "CardQuest", description: "Walk to crates on the map. Open them for real graded trading cards.", manifest: "/manifest.webmanifest", appleWebApp: { capable: true, title: "CardQuest", statusBarStyle: "black-translucent" } };
+export const metadata: Metadata = { title: "CardQuest", description: "Walk to crates on the map. Open them for real graded trading cards.", manifest: "/manifest.webmanifest", icons: { icon: "/icon-512.png", apple: "/apple-icon.png" }, appleWebApp: { capable: true, title: "CardQuest", statusBarStyle: "black-translucent" } };
 export const viewport: Viewport = { themeColor: "#000000", width: "device-width", initialScale: 1, maximumScale: 1, viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
