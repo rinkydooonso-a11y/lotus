@@ -359,3 +359,13 @@ describe('buyer config', () => {
     expect(loadConfig({ ...base, SQUADS_MIN_THRESHOLD: '1', SQUADS_ALLOW_SINGLE_SIGNER: 'yes-one-wallet-controls-the-vault' }).SQUADS_MIN_THRESHOLD).toBe(1);
   });
 });
+
+describe('explainListing', () => {
+  it('names the first rule a listing breaks, and agrees with classify', async () => {
+    const { explainListing } = await import('../src/cardBuyer.js');
+    expect(explainListing(listing('m', 0.07, 25, 'Merch'), policy, SOL_USD)).toEqual({ reason: 'trait Type is "Merch", needs "Card"' });
+    expect(explainListing(listing('o', 0.5, 40), policy, SOL_USD)).toMatchObject({ reason: expect.stringContaining('more than 1 x its insured value') });
+    const ok = explainListing(listing('a', 0.2, 30), policy, SOL_USD);
+    expect(ok).toMatchObject({ candidate: { tier: 'common' } });
+  });
+});

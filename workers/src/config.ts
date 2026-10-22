@@ -109,7 +109,7 @@ const EnvSchema = z.object({
   BUY_MAX_CARDS_PER_TICK: z.coerce.number().int().min(1).max(20).default(10),
   BUY_MAX_OVERHEAD_BPS: z.coerce.number().int().min(0).max(2000).default(800),
   BUY_GAS_RESERVE_SOL: z.coerce.number().min(0).default(0.05),
-  BUY_LISTING_PAGES: z.coerce.number().int().min(1).max(20).default(5),
+  BUY_LISTING_PAGES: z.coerce.number().int().min(1).max(200).default(100),
   BUY_INTERVAL_MS: z.coerce.number().int().min(300_000).default(3_600_000),
   SOL_USD_MIN: z.coerce.number().positive().default(20),
   SOL_USD_MAX: z.coerce.number().positive().default(2000),

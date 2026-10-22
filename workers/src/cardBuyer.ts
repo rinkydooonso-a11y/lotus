@@ -105,22 +105,30 @@ export function parseUsd(raw: string | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** Pure: whether a listing is a card we would buy, and as which tier. */
-export function classify(listing: Listing, policy: BuyPolicy, solUsd: number): Candidate | null {
+/** Pure: whether a listing is a card we would buy, and as which tier; otherwise the first rule it breaks. */
+export function explainListing(listing: Listing, policy: BuyPolicy, solUsd: number): { candidate: Candidate } | { reason: string } {
   for (const [k, v] of Object.entries(policy.requiredTraits)) {
-    if ((listing.attributes[k] ?? '').toLowerCase() !== v.toLowerCase()) return null;
+    const got = listing.attributes[k] ?? '';
+    if (got.toLowerCase() !== v.toLowerCase()) return { reason: `trait ${k} is "${got}", needs "${v}"` };
   }
   const valueUsd = parseUsd(listing.attributes[policy.valueTrait]);
-  if (valueUsd === null) return null;
-  if (listing.priceLamports <= 0n || listing.priceLamports > policy.maxLamportsPerCard) return null;
+  if (valueUsd === null) return { reason: `no ${policy.valueTrait} value` };
+  if (listing.priceLamports <= 0n) return { reason: 'no price' };
+  if (listing.priceLamports > policy.maxLamportsPerCard) return { reason: 'over the per-card SOL cap' };
   const priceUsd = listing.priceUsdc !== undefined ? Number(listing.priceUsdc) / 1e6 : (Number(listing.priceLamports) / 1e9) * solUsd;
-  if (policy.maxPriceUsd !== undefined && priceUsd > policy.maxPriceUsd) return null;
-  if (priceUsd > valueUsd * policy.maxPriceToValue) return null;
+  if (policy.maxPriceUsd !== undefined && priceUsd > policy.maxPriceUsd) return { reason: `price $${priceUsd.toFixed(2)} is over the $${policy.maxPriceUsd} per-card cap` };
+  if (priceUsd > valueUsd * policy.maxPriceToValue) return { reason: `price $${priceUsd.toFixed(2)} is more than ${policy.maxPriceToValue} x its insured value $${valueUsd}` };
   let tier: Tier | null = null;
   for (const t of TIERS) if (valueUsd >= policy.tierMinUsd[t]) tier = t;
-  if (!tier) return null;
+  if (!tier) return { reason: 'insured value is below every tier' };
   const grade = policy.gradeTrait ? listing.attributes[policy.gradeTrait] ?? null : null;
-  return { listing, tier, valueUsd, priceUsd, grade };
+  return { candidate: { listing, tier, valueUsd, priceUsd, grade } };
+}
+
+/** Pure: whether a listing is a card we would buy, and as which tier. */
+export function classify(listing: Listing, policy: BuyPolicy, solUsd: number): Candidate | null {
+  const r = explainListing(listing, policy, solUsd);
+  return 'candidate' in r ? r.candidate : null;
 }
 
 /** Pure: how many dollars of stock each tier is short of its target. */
