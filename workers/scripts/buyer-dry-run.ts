@@ -20,7 +20,7 @@ const rpc = process.env.SOLANA_RPC_URL!;
 const hot = process.env.HOT_WALLET_ADDRESS!;
 const collection = process.env.BUY_COLLECTION_ADDRESS!;
 if (!rpc || !hot || !collection) throw new Error('SOLANA_RPC_URL, HOT_WALLET_ADDRESS and BUY_COLLECTION_ADDRESS are required');
-const maxUsd = Number(process.env.BUY_MAX_USD_PER_CARD ?? 25);
+const maxUsd = Number(process.env.BUY_MAX_USD_PER_CARD ?? 50);
 
 async function main() {
   const solUsd = await jupiterSolUsd();

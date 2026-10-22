@@ -4,7 +4,7 @@ import { openCrate } from '../src/openCrate';
 import { claimNextPrizeSend, markPrizeFailed, markPrizeSent, recordSubmittedSignature } from '../src/prizeQueue';
 import { freezePlayer, unfreezePlayer } from '../src/admin';
 import { nearbyCrates, seedWorldCrates } from '../src/crates';
-import { loadOdds } from '../src/odds';
+import { ceilingFromPool, dailyBudget, loadOdds, prizePool } from '../src/odds';
 import { ROLL_TIERS, type CrateKind } from '../src/types';
 import { getAllowance } from '../src/tickets';
 import {
@@ -208,6 +208,67 @@ describe('daily prize budget', () => {
     const cards = await pool.query(`SELECT count(*)::int AS n FROM crate_openings WHERE result = 'card'`);
     expect(cards.rows[0].n).toBe(3);
     expect((await pool.query(`SELECT cards_awarded FROM prize_budget_days`)).rows[0].cards_awarded).toBe(3);
+  });
+});
+
+describe('prize pool ceiling', () => {
+  const setFund = async (usd: number) => {
+    await pool.query('TRUNCATE prize_fund_entries');
+    if (usd > 0) await pool.query(`INSERT INTO prize_fund_entries (kind, usd) VALUES ('seed', $1)`, [usd]);
+  };
+  const utcHour = async () => (await pool.query(`SELECT extract(hour FROM now() AT TIME ZONE 'UTC')::int AS h`)).rows[0].h as number;
+
+  it('is one payout-day of the pool, rounded down to the cent', () => {
+    expect(ceilingFromPool(1400, 14)).toBe(100);
+    expect(ceilingFromPool(750, 14)).toBe(53.57);
+    expect(ceilingFromPool(0)).toBe(0);
+  });
+
+  it('counts cards in stock at what they cost, not what they are insured for', async () => {
+    await setFund(100);
+    await addCards(1, 200);
+    await pool.query(`UPDATE inventory_items SET cost_usd = 40`);
+    expect(await prizePool(pool)).toMatchObject({ cashUsd: 100, stockUsd: 40, poolUsd: 140 });
+    // No cost on record: the insured value stands in.
+    await pool.query(`UPDATE inventory_items SET cost_usd = NULL`);
+    expect((await prizePool(pool)).stockUsd).toBe(200);
+  });
+
+  it('releases the day one hour at a time', async () => {
+    await setFund(3360); // ceiling $240
+    const h = await utcHour();
+    const b = await dailyBudget(pool);
+    expect(b.ceilingUsd).toBe(240);
+    expect(b.valueLeftUsd).toBeCloseTo((240 * (h + 1)) / 24, 1);
+  });
+
+  it('fixes the ceiling when the first card of the day is awarded', async () => {
+    await setFund(3360);
+    await addCards(2, 10);
+    const first = await openCrate(req(await crateAt(), await newPlayer()), deps(ROLL_COMMON));
+    expect(first).toMatchObject({ ok: true, outcome: 'card' });
+    const stored = Number((await pool.query(`SELECT ceiling_usd FROM prize_budget_days`)).rows[0].ceiling_usd);
+    expect(stored).toBeCloseTo(240.71, 1); // (3360 + the two $10 cards) / 14
+
+    // Fees arriving mid-day don't move today's ceiling; they count from tomorrow.
+    await pool.query(`INSERT INTO prize_fund_entries (kind, usd) VALUES ('fee_share', 100000)`);
+    expect((await dailyBudget(pool)).ceilingUsd).toBeCloseTo(stored, 2);
+  });
+
+  it('pays shards, not cards, when nothing has come in', async () => {
+    await setFund(0);
+    await pool.query(`UPDATE inventory_items SET status = 'removed'`);
+    await addCards(3, 10);
+    await pool.query(`UPDATE inventory_items SET cost_usd = 0`);
+    const r = await openCrate(req(await crateAt(), await newPlayer()), deps(ROLL_COMMON));
+    expect(r).toMatchObject({ ok: true, outcome: 'shards', budgetCapped: true });
+  });
+
+  it('lets a fixed dollar ceiling replace the pool one', async () => {
+    await setFund(0);
+    await addCards(1, 10);
+    const r = await openCrate(req(await crateAt(), await newPlayer()), { ...deps(ROLL_COMMON), budget: { maxValueUsd: 100 } });
+    expect(r).toMatchObject({ ok: true, outcome: 'card' });
   });
 });
 

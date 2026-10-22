@@ -18,7 +18,8 @@ function num(name: string, fallback: number): number {
  * What the game can pay out in a day is bounded twice over:
  *   cratesPerCity x cities        - how many crates exist to be opened at all
  *   maxWorldCratesPerDay          - hard ceiling on crates created per UTC day
- *   maxCardsPerDay / maxCardValueUsdPerDay - the real stop; past either, card tiers roll 0
+ *   the prize pool / poolPayoutDays - the real stop: a day pays out at most that share of the money
+ *     that has come in (see odds.ts); past it, card tiers roll 0
  * freeOpensPerDay bounds what one player can take, not what the game spends.
  */
 export const GAME = {
@@ -37,14 +38,22 @@ export const GAME = {
   /** Opens a player gets for free each UTC day. Every further open that day spends a ticket. */
   freeOpensPerDay: num('LOTUS_FREE_OPENS_PER_DAY', 10),
   /**
-   * Circuit breaker: once either is reached in a UTC day, card tiers roll 0 and opens pay shards.
-   *
-   * The dollar ceiling is the one to set from fee income; it is meant to be the limit that binds.
-   * The card count is a sanity stop for the case where the vault fills with cheap cards, so keep it
-   * high enough that an average day's cards cost more than maxCardsPerDay x the average card.
+   * The day's prize ceiling is the prize pool (card fund cash plus the cost of the cards in stock)
+   * divided by this many days, fixed when the day's first card is awarded and released evenly over
+   * the 24 hours. Every limit scales with the money that has come in, so a flop pays out slowly and
+   * a boom pays out more, and nothing is ever owed.
    */
-  maxCardsPerDay: num('LOTUS_MAX_CARDS_PER_DAY', 25),
-  maxCardValueUsdPerDay: num('LOTUS_MAX_CARD_VALUE_PER_DAY', 400),
+  poolPayoutDays: Math.max(1, num('LOTUS_POOL_PAYOUT_DAYS', 14)),
+  /**
+   * Sanity stop on the number of cards in a day, for a pool full of cheap cards. High on purpose:
+   * the pool, not this, is the limit that binds.
+   */
+  maxCardsPerDay: num('LOTUS_MAX_CARDS_PER_DAY', 1000),
+  /**
+   * Optional fixed dollar ceiling that replaces the pool-based one (0 = off). An emergency dial,
+   * not a normal setting.
+   */
+  maxCardValueUsdPerDay: num('LOTUS_MAX_CARD_VALUE_PER_DAY', 0),
   shardsPerEmptyMin: 1,
   shardsPerEmptyMax: 3,
   /**

@@ -58,16 +58,25 @@ const EnvSchema = z.object({
   FEE_CLAIM_MIN_BASE_UNITS: z.string().regex(/^\d{1,30}$/).default('1'),
   /** Refuse to claim unless the vault's share of the fees is at least this (10000 = 100%). */
   FEE_MIN_VAULT_SHARE_BPS: z.coerce.number().int().min(1).max(10_000).default(10_000),
+  /** Share of each fee claim that goes to the card fund the game pays prizes from (7000 = 70%). The rest stays in the vault. */
+  FEE_CARD_FUND_BPS: z.coerce.number().int().min(0).max(10_000).default(7_000),
   FEE_CLAIMER_MIN_GAS_SOL: z.coerce.number().min(0).default(0.005),
   /**
    * Squads spending limit the hot wallet may draw on to buy cards. With SQUADS_MULTISIG_ADDRESS,
    * turns on the card buyer. The limit itself (amount per period) is set on chain by the signers.
    */
   BUYER_SPENDING_LIMIT: base58Address.optional(),
-  /** Wanted 'available' cards per tier, bought on the market when short. */
-  BUY_TARGETS: z.string().default('common:10,uncommon:4,rare:2,grail:0'),
-  /** Lowest insured value (USD) for each tier. */
-  BUY_TIER_MIN_USD: z.string().default('common:0,uncommon:50,rare:150,grail:500'),
+  /**
+   * How the stock value is split across tiers, as weights (they need not sum to 100). The stock
+   * itself is sized from the prize pool, so there are no fixed card counts or dollar targets.
+   */
+  BUY_TIER_MIX: z.string().default('common:45,uncommon:30,rare:20,grail:5'),
+  /** The pool pays out over this many days. Must match LOTUS_POOL_PAYOUT_DAYS on the game server. */
+  LOTUS_POOL_PAYOUT_DAYS: z.coerce.number().min(1).default(14),
+  /** Days of a day's release the hot wallet holds in cards. */
+  BUY_STOCK_DAYS: z.coerce.number().positive().default(3),
+  /** Lowest insured value (USD) for each tier. Same bands as the game's tiers (server tierForValue). */
+  BUY_TIER_MIN_USD: z.string().default('common:0,uncommon:30,rare:75,grail:300'),
   /** Traits a listing must have, e.g. "Type=Card;Grading Company=PSA". */
   BUY_REQUIRED_TRAITS: z.string().default(''),
   BUY_VALUE_TRAIT: z.string().min(1).default('Insured Value'),
@@ -78,12 +87,12 @@ const EnvSchema = z.object({
   /** Off-chain backstop: card spend over any 7 days, on top of the on-chain spending limit. */
   BUY_WEEKLY_MAX_SOL: z.coerce.number().positive().default(20),
   BUY_MAX_PRICE_TO_VALUE: z.coerce.number().positive().max(2).default(1),
-  /** Never pay more than this many USD (USDC) for one card. */
-  BUY_MAX_USD_PER_CARD: z.coerce.number().positive().max(1000).default(25),
+  /** Hard top on one card, in USD (USDC). The buyer also never pays more than one day's release for a card. */
+  BUY_MAX_USD_PER_CARD: z.coerce.number().positive().max(1000).default(1000),
   /** Slippage allowed on the SOL to USDC swap that funds a purchase. */
   BUY_SWAP_SLIPPAGE_BPS: z.coerce.number().int().min(1).max(500).default(100),
-  BUY_MAX_SOL_PER_CARD: z.coerce.number().positive().max(100).default(1),
-  BUY_MAX_CARDS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
+  BUY_MAX_SOL_PER_CARD: z.coerce.number().positive().max(100).default(10),
+  BUY_MAX_CARDS_PER_TICK: z.coerce.number().int().min(1).max(20).default(10),
   BUY_MAX_OVERHEAD_BPS: z.coerce.number().int().min(0).max(2000).default(800),
   BUY_GAS_RESERVE_SOL: z.coerce.number().min(0).default(0.05),
   BUY_LISTING_PAGES: z.coerce.number().int().min(1).max(20).default(5),
@@ -111,11 +120,12 @@ export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9
 type TierNumbers = Record<'common' | 'uncommon' | 'rare' | 'grail', number>;
 export type Config = Omit<
   z.infer<typeof EnvSchema>,
-  'PRIZE_COLLECTIONS' | 'TOPUP_TARGETS' | 'BUY_TARGETS' | 'BUY_TIER_MIN_USD' | 'BUY_REQUIRED_TRAITS'
+  'PRIZE_COLLECTIONS' | 'TOPUP_TARGETS' | 'BUY_TIER_MIX' | 'BUY_TIER_MIN_USD' | 'BUY_REQUIRED_TRAITS'
 > & {
   PRIZE_COLLECTIONS: string[];
   TOPUP_TARGETS: TierNumbers;
-  BUY_TARGETS: TierNumbers;
+  /** Fractions of the stock value per tier; they sum to 1. */
+  BUY_TIER_MIX: TierNumbers;
   BUY_TIER_MIN_USD: TierNumbers;
   BUY_REQUIRED_TRAITS: Record<string, string>;
 };
@@ -152,10 +162,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...parsed.data,
     PRIZE_COLLECTIONS: collections,
     TOPUP_TARGETS: parseTargets(parsed.data.TOPUP_TARGETS),
-    BUY_TARGETS: parseTargets(parsed.data.BUY_TARGETS, 'BUY_TARGETS'),
+    BUY_TIER_MIX: parseMix(parsed.data.BUY_TIER_MIX),
     BUY_TIER_MIN_USD: parseTargets(parsed.data.BUY_TIER_MIN_USD, 'BUY_TIER_MIN_USD', 6),
     BUY_REQUIRED_TRAITS: parseTraits(parsed.data.BUY_REQUIRED_TRAITS),
   };
+}
+
+/** Parses "common:45,uncommon:30,..." weights into fractions that sum to 1. */
+export function parseMix(raw: string): TierNumbers {
+  const w = parseTargets(raw, 'BUY_TIER_MIX');
+  const total = w.common + w.uncommon + w.rare + w.grail;
+  if (total <= 0) throw new Error('Invalid worker environment:\n  BUY_TIER_MIX: at least one tier needs a weight above 0');
+  return { common: w.common / total, uncommon: w.uncommon / total, rare: w.rare / total, grail: w.grail / total };
 }
 
 export function parseTraits(raw: string): Record<string, string> {

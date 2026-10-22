@@ -57,9 +57,11 @@ The order matters: money-moving pieces switch on last, and the confirmation phra
 
 ## Card buyer (Collector Crypt marketplace, USDC, no API key)
 
-The buyer reads `api.collectorcrypt.com/marketplace`, re-reads each listing account on chain, and builds the `buy_core` transaction itself (program `CcmRKTuZ...SQUr`). Only the hot wallet signs. Cards cost USDC, so the hot wallet swaps just enough SOL (from the Squads spending limit) into USDC through Jupiter before each buy. Per-card cap is `BUY_MAX_USD_PER_CARD` (default 25).
+The buyer reads `api.collectorcrypt.com/marketplace`, re-reads each listing account on chain, and builds the `buy_core` transaction itself (program `CcmRKTuZ...SQUr`). Only the hot wallet signs. Cards cost USDC, so the hot wallet swaps just enough SOL (from the Squads spending limit) into USDC through Jupiter before each buy. It only spends the card fund (the seed plus `FEE_CARD_FUND_BPS` of each claim); a card may cost at most one day's release (pool / 14) and never more than `BUY_MAX_USD_PER_CARD` (default 1000). Stock is sized from the pool, not fixed counts. See `docs/odds.md`.
 
 - `BUY_COLLECTION_ADDRESS` = `CCryptUfeFSZ3Fgc9FLeKrhLVAP67FSqi1GuVoj9CRac` (the Core collection the marketplace whitelists).
 - `BUY_UPDATE_AUTHORITY` = `DQPERZ9e86pNJ4mhUnCEP8V75yxZofsipoVrRWT5Wdxd`. This is what DAS lists as the full authority on a sampled Core card (checked read-only on mainnet), so it is what the DAS card check compares. On chain, the Core asset's own update authority is the Collection type pointing at `CCryptUfe...`; the buyer's on-chain listing check pins that collection separately. Do not set `BUY_UPDATE_AUTHORITY` to `CCryptUfe...`: every card would be refused.
 - `BUY_REQUIRED_TRAITS` = `Type=Card`.
+- **Seed the card fund before the buyer runs.** `cd workers && DATABASE_URL=... npx tsx scripts/fund-entry.ts seed 750 "launch seed"`, for whatever amount actually sits in the vault for cards. Without a seed the buyer waits for the first fee claim. Set the Squads weekly spending limit to match.
+- `LOTUS_POOL_PAYOUT_DAYS` must be the same on the game server (Vercel) and the workers (Fly).
 - Before turning it on: fund the hot wallet with a little SOL, run `scripts/buyer-dry-run.ts` (read-only), and run a mainnet simulation of a swap plus buy with the funded hot wallet. The program is upgradeable and has pause controls, so re-check the instruction layout if a simulation starts failing.

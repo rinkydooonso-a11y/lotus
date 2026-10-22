@@ -16,7 +16,10 @@ export const TEST_CITY = { name: 'Testville', lat: LAT, lng: LNG, radiusKm: 2 } 
 export async function reset() {
   await pool.query(`TRUNCATE prize_sends, crate_openings, inventory_items, ticket_spends, crates,
                     location_pings, player_flags, player_open_days, prize_budget_days,
-                    holder_windows, wallets, players, treasury_events CASCADE`);
+                    holder_windows, wallets, players, treasury_events, prize_fund_entries CASCADE`);
+  // A big pool by default, so the day's ceiling (pool / payout days) never gets in the way of tests
+  // about something else. Tests of the ceiling itself clear this and set their own money.
+  await pool.query(`INSERT INTO prize_fund_entries (kind, usd, note) VALUES ('adjust', 1000000, 'test default')`);
 }
 
 export async function newPlayer() {

@@ -25,7 +25,7 @@ export {
   type CoinBalance,
   type CoinHoldConfig,
 } from './coin';
-export { getPublicOdds, setOdds, dailyBudget, type DailyBudget } from './odds';
+export { getPublicOdds, setOdds, dailyBudget, prizePool, ceilingFromPool, type DailyBudget, type PrizePool } from './odds';
 export { applyShards, convertShards } from './shards';
 export { getPlayerHistory, getVaultStats } from './stats';
 export {

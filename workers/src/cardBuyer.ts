@@ -8,7 +8,13 @@ import type { Logger } from './types.js';
  * once: the hot wallet may pull at most N SOL per week, and only to itself. The program enforces
  * that cap, so a leaked hot-wallet key loses at most one week's budget, never the vault.
  *
- * Each tick it compares 'available' cards per tier with a target, picks the cheapest listings
+ * Nothing here is a fixed dollar number: everything scales with the prize pool (the card fund's cash
+ * plus the cost of the cards in stock). One day's release is pool / payoutDays, the stock to hold is
+ * stockDays of that split across tiers by `tierMix`, and no card may cost more than one day's
+ * release. A tier whose cards are all too dear passes its share down to the tier below. It only
+ * ever spends fund cash, which comes from the seed and the card share of fee claims.
+ *
+ * Each tick it compares the stock value per tier with its target, picks the cheapest listings
  * that pass the filters (required traits, insured value, price caps), and buys them one at a
  * time. Every marketplace-built transaction is simulated and checked before it is signed. A
  * purchase row is written before sending, so a crash leaves a 'sending' row the next tick
@@ -37,7 +43,12 @@ export interface Candidate {
 }
 
 export interface BuyPolicy {
-  targets: Record<Tier, number>;
+  /** Share of the stock value held in each tier (fractions that sum to 1). */
+  tierMix: Record<Tier, number>;
+  /** The pool pays out over this many days; one day's release is pool / payoutDays. */
+  payoutDays: number;
+  /** Stock held in the hot wallet, in days of release. */
+  stockDays: number;
   /** Lowest insured value (USD) for each tier; a card takes the highest tier it reaches. */
   tierMinUsd: Record<Tier, number>;
   /** Every one of these traits must match exactly (e.g. Type=Card). */
@@ -52,8 +63,40 @@ export interface BuyPolicy {
   maxCardsPerTick: number;
   /** Fees and royalties allowed on top of the listing price, in basis points. */
   maxOverheadBps: number;
-  /** Hard per-card cap in USD, when the marketplace prices in USDC. */
+  /** Hard per-card cap in USD. The tick also never pays more than one day's release for a card. */
   maxPriceUsd?: number;
+}
+
+export interface FundState {
+  /** Card fund cash, in USD. */
+  cashUsd: number;
+  /** Cards in stock per tier, counted at what they cost. */
+  stockUsd: Record<Tier, number>;
+}
+
+export interface Sizing {
+  poolUsd: number;
+  /** What the game may give away in a day. */
+  dayReleaseUsd: number;
+  /** Most one card may cost. */
+  capUsd: number;
+  targetUsd: Record<Tier, number>;
+}
+
+/** Pure: how big everything is for a given fund. */
+export function sizing(fund: FundState, policy: BuyPolicy): Sizing {
+  const stock = TIERS.reduce((a, t) => a + (fund.stockUsd[t] ?? 0), 0);
+  const poolUsd = Math.max(0, fund.cashUsd) + stock;
+  const dayReleaseUsd = poolUsd / Math.max(1, policy.payoutDays);
+  const stockTarget = dayReleaseUsd * policy.stockDays;
+  const targetUsd = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+  for (const t of TIERS) targetUsd[t] = stockTarget * (policy.tierMix[t] ?? 0);
+  return {
+    poolUsd,
+    dayReleaseUsd,
+    capUsd: Math.min(dayReleaseUsd, policy.maxPriceUsd ?? Infinity),
+    targetUsd,
+  };
 }
 
 export function parseUsd(raw: string | undefined): number | null {
@@ -80,42 +123,75 @@ export function classify(listing: Listing, policy: BuyPolicy, solUsd: number): C
   return { listing, tier, valueUsd, priceUsd, grade };
 }
 
-/** Pure: how many cards each tier is short of its target. */
-export function needsByTier(available: Record<Tier, number>, policy: BuyPolicy): Record<Tier, number> {
+/** Pure: how many dollars of stock each tier is short of its target. */
+export function shortByTier(fund: FundState, size: Sizing): Record<Tier, number> {
   const out = { common: 0, uncommon: 0, rare: 0, grail: 0 };
-  for (const t of TIERS) out[t] = Math.max(0, policy.targets[t] - (available[t] ?? 0));
+  for (const t of TIERS) out[t] = Math.max(0, size.targetUsd[t] - (fund.stockUsd[t] ?? 0));
   return out;
 }
 
-/** Pure: cheapest qualifying listings per tier, cheaper tiers first, under the per-tick cap. */
+export interface BuyPlan {
+  /** Candidates in the order to try: cheaper tiers first, cheapest first within a tier, spares last in their tier. */
+  picks: Candidate[];
+  /** Dollars of stock still wanted per tier, after a tier with nothing to buy has passed its share down. */
+  want: Record<Tier, number>;
+}
+
+/**
+ * Pure: what to buy. Tiers are settled from the top down: a tier with no listing it can afford (or
+ * whose cheapest card would overshoot its need by more than half) passes its need to the tier below,
+ * so a small pool that can't buy a rare puts that money into more commons. The plan never plans more
+ * than `cashUsd` of purchases, and never exceeds `maxCardsPerTick`.
+ */
 export function planBuys(
-  available: Record<Tier, number>,
+  short: Record<Tier, number>,
   listings: Listing[],
   owned: Set<string>,
   policy: BuyPolicy,
   solUsd: number,
+  cashUsd: number,
   /** Extra candidates per tier beyond the need, as replacements. */
   spare = 0,
-): Candidate[] {
-  const candidates = listings
-    .filter((l) => !owned.has(l.mint))
-    .map((l) => classify(l, policy, solUsd))
-    .filter((c): c is Candidate => c !== null)
-    .sort((a, b) => (a.listing.priceLamports < b.listing.priceLamports ? -1 : a.listing.priceLamports > b.listing.priceLamports ? 1 : 0));
-  const picks: Candidate[] = [];
-  const seen = new Set<string>();
-  for (const tier of TIERS) {
-    const short = Math.max(0, policy.targets[tier] - (available[tier] ?? 0));
-    let need = short > 0 ? short + spare : 0;
-    for (const c of candidates) {
-      if (need === 0 || picks.length >= policy.maxCardsPerTick) break;
-      if (c.tier !== tier || seen.has(c.listing.mint)) continue;
-      picks.push(c);
-      seen.add(c.listing.mint);
-      need--;
+): BuyPlan {
+  const byTier: Record<Tier, Candidate[]> = { common: [], uncommon: [], rare: [], grail: [] };
+  for (const l of listings) {
+    if (owned.has(l.mint)) continue;
+    const c = classify(l, policy, solUsd);
+    if (c) byTier[c.tier].push(c);
+  }
+  for (const t of TIERS) byTier[t].sort((a, b) => a.priceUsd - b.priceUsd);
+
+  // Pass 1: top down, a tier that can't use its need hands it to the tier below.
+  const want = { ...short };
+  for (let i = TIERS.length - 1; i > 0; i--) {
+    const t = TIERS[i]!;
+    const cheapest = byTier[t][0];
+    if (want[t] > 0 && (!cheapest || cheapest.priceUsd > want[t] * 1.5)) {
+      want[TIERS[i - 1]!] += want[t];
+      want[t] = 0;
     }
   }
-  return picks;
+
+  // Pass 2: bottom up so scarce cash goes to the everyday tiers first.
+  const picks: Candidate[] = [];
+  let cash = cashUsd;
+  for (const t of TIERS) {
+    let need = want[t];
+    let extra = need > 0 ? spare : 0;
+    for (const c of byTier[t]) {
+      if (picks.length >= policy.maxCardsPerTick) break;
+      if (need > 0) {
+        if (c.priceUsd > cash) continue;
+        picks.push(c);
+        need -= c.priceUsd;
+        cash -= c.priceUsd;
+      } else if (extra > 0) {
+        picks.push(c);
+        extra--;
+      } else break;
+    }
+  }
+  return { picks, want };
 }
 
 export interface PendingPurchase {
@@ -127,8 +203,8 @@ export interface PendingPurchase {
 
 export interface BuyerStore {
   pending(): Promise<PendingPurchase[]>;
-  /** 'available' cards per tier in the hot wallet. */
-  availableByTier(): Promise<Record<Tier, number>>;
+  /** The card fund's cash and the cost of the cards in stock per tier. */
+  fund(): Promise<FundState>;
   /** Lamports spent on purchases (sending or bought) since the given time. */
   spentSince(since: Date): Promise<bigint>;
   /** Mints already in inventory or in a sending/bought purchase. */
@@ -216,35 +292,46 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
   if (unresolved) return { kind: 'waiting', pending: unresolved };
 
   // 2. Work out what to buy.
-  const available = await store.availableByTier();
-  const short = TIERS.some((t) => policy.targets[t] > (available[t] ?? 0));
-  if (!short) return { kind: 'idle', reason: 'stocked' };
+  const fund = await store.fund();
+  const size = sizing(fund, policy);
+  const short = shortByTier(fund, size);
+  if (!TIERS.some((t) => short[t] > 0)) return { kind: 'idle', reason: 'stocked' };
+  if (fund.cashUsd <= 0) {
+    log.warn('stock is short but the card fund has no cash; waiting for fees', { poolUsd: size.poolUsd, short });
+    return { kind: 'idle', reason: 'fund_empty' };
+  }
   const solUsd = await gateway.solUsd();
   const [listings, owned] = await Promise.all([deps.market.listings(solUsd), store.ownedMints()]);
+  // No card may cost more than one day's release (and never more than the hard cap).
+  const tickPolicy: BuyPolicy = { ...policy, maxPriceUsd: size.capUsd, maxCardsPerTick: policy.maxCardsPerTick * 4 };
   // Plan with spares: a pick that fails the on-chain check is replaced by the next-cheapest one.
-  const needs = needsByTier(available, policy);
-  const picks = planBuys(available, listings, owned, { ...policy, maxCardsPerTick: policy.maxCardsPerTick * 4 }, solUsd, 3);
+  const { picks, want } = planBuys(short, listings, owned, tickPolicy, solUsd, fund.cashUsd, 3);
   if (picks.length === 0) {
-    log.warn('cards needed but no listing passes the filters', { available });
+    log.warn('cards needed but no listing passes the filters', { short, capUsd: size.capUsd });
     return { kind: 'idle', reason: 'no_matching_listings' };
   }
 
-  // 3. Buy them one at a time, inside the weekly budget.
+  // 3. Buy them one at a time, inside the fund and the weekly budget.
   let bought = 0;
   let spent = 0n;
+  let cashLeft = fund.cashUsd;
   for (const pick of picks) {
     if (bought >= policy.maxCardsPerTick) break;
-    if (needs[pick.tier] === 0) continue;
+    if (want[pick.tier] <= 0) continue;
     let c: Candidate | null;
     try {
-      c = classify(await gateway.verifyCard(pick.listing), policy, solUsd);
+      c = classify(await gateway.verifyCard(pick.listing), tickPolicy, solUsd);
     } catch (err) {
       log.warn('listing failed the on-chain card check', { mint: pick.listing.mint, error: err instanceof Error ? err.message : String(err) });
       continue;
     }
-    if (!c || needs[c.tier] === 0) {
+    if (!c || want[c.tier] <= 0) {
       log.warn('on-chain traits do not qualify the listing for a tier we need', { mint: pick.listing.mint, tier: c?.tier ?? null });
       continue;
+    }
+    if (c.priceUsd > cashLeft) {
+      log.warn('card fund cash used up; stopping until more fees arrive', { cashLeft, price: c.priceUsd });
+      return { kind: 'bought', cards: bought, spentLamports: spent.toString(), stopped: 'fund' };
     }
     const weekSpent = await store.spentSince(new Date(Date.now() - 7 * 86_400_000));
     if (weekSpent + c.listing.priceLamports > deps.weeklyMaxLamports) {
@@ -285,7 +372,8 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
     }
     await store.markBought(id);
     bought++;
-    needs[c.tier]--;
+    want[c.tier] -= c.priceUsd;
+    cashLeft -= c.priceUsd;
     spent += c.listing.priceLamports;
     log.info('bought a card', { mint: c.listing.mint, tier: c.tier, valueUsd: c.valueUsd, priceUsd: Math.round(c.priceUsd * 100) / 100 });
   }

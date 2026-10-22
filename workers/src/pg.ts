@@ -2,7 +2,7 @@ import type pg from 'pg';
 import type { DiscrepancyKind, OpenDiscrepancy, Snapshot, SyncStore, TrackedItem } from './inventorySync.js';
 import type { Logger, PrizeTx, SignedTransfer, TxLog, TxState } from './types.js';
 import type { OpenProposal, Tier, TopUpStore, VaultCard } from './topUp.js';
-import type { BuyerStore, Candidate, PendingPurchase } from './cardBuyer.js';
+import type { BuyerStore, Candidate, FundState, PendingPurchase } from './cardBuyer.js';
 import type { ClaimLog } from './feeClaimer.js';
 
 export class PgTxLog implements TxLog {
@@ -366,11 +366,30 @@ export class PgTopUpStore implements TopUpStore {
 export class PgClaimLog implements ClaimLog {
   constructor(private readonly db: pg.Pool) {}
 
-  async recordClaim(e: { signature: string; amount: string | null; asset: string; note: string }): Promise<void> {
-    await this.db.query(
-      `INSERT INTO treasury_events (kind, amount, asset, tx_signature, note) VALUES ('claim', $1, $2, $3, $4)`,
-      [e.amount, e.asset, e.signature, e.note],
-    );
+  async recordClaim(e: {
+    signature: string; amount: string | null; asset: string; note: string; usdValue: string | null; fundUsd: string | null;
+  }): Promise<void> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO treasury_events (kind, amount, asset, usd_value, tx_signature, note) VALUES ('claim', $1, $2, $3, $4, $5)`,
+        [e.amount, e.asset, e.usdValue, e.signature, e.note],
+      );
+      // Keyed by signature, so a retry can never count the same claim into the card fund twice.
+      if (e.fundUsd !== null && Number(e.fundUsd) > 0) {
+        await client.query(
+          `INSERT INTO prize_fund_entries (kind, usd, ref, note) VALUES ('fee_share', $1, $2, $3) ON CONFLICT DO NOTHING`,
+          [e.fundUsd, e.signature, 'card share of a creator-fee claim'],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 
@@ -384,13 +403,17 @@ export class PgBuyerStore implements BuyerStore {
     return rows.map((r) => ({ id: String(r.id), mint: r.nft_mint, signature: r.tx_signature, createdAt: r.created_at }));
   }
 
-  async availableByTier(): Promise<Record<Tier, number>> {
-    const { rows } = await this.db.query<{ tier: Tier; n: number }>(
-      `SELECT tier, count(*)::int AS n FROM inventory_items WHERE status = 'available' GROUP BY tier`,
-    );
-    const out: Record<Tier, number> = { common: 0, uncommon: 0, rare: 0, grail: 0 };
-    for (const r of rows) out[r.tier] = r.n;
-    return out;
+  async fund(): Promise<FundState> {
+    const [cash, stock] = await Promise.all([
+      this.db.query<{ c: string }>(`SELECT COALESCE(sum(usd), 0)::text AS c FROM prize_fund_entries`),
+      // Stock counts at what it cost, so buying below insured value can't make the pool grow.
+      this.db.query<{ tier: Tier; s: string }>(
+        `SELECT tier, COALESCE(sum(COALESCE(cost_usd, value_usd)), 0)::text AS s FROM inventory_items WHERE status = 'available' GROUP BY tier`,
+      ),
+    ]);
+    const stockUsd: Record<Tier, number> = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+    for (const r of stock.rows) stockUsd[r.tier] = Number(r.s);
+    return { cashUsd: Number(cash.rows[0]!.c), stockUsd };
   }
 
   async spentSince(since: Date): Promise<bigint> {
@@ -453,6 +476,13 @@ export class PgBuyerStore implements BuyerStore {
            VALUES ('purchase', $1::numeric / 1e9, 'SOL', $2, $3, $4, $5)`,
           [p.price_lamports, costUsd.toFixed(2), p.tx_signature, `bought ${p.card_name} on Collector Crypt`, itemId],
         );
+        // The card fund pays for it. Keyed by the purchase id so a settle retry can't charge it twice.
+        if (costUsd >= 0.01) {
+          await client.query(
+            `INSERT INTO prize_fund_entries (kind, usd, ref, note) VALUES ('purchase', $1, $2, $3) ON CONFLICT DO NOTHING`,
+            [(-costUsd).toFixed(2), id, `bought ${p.card_name}`],
+          );
+        }
       }
       await client.query('COMMIT');
     } catch (err) {
