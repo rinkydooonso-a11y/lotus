@@ -202,7 +202,7 @@ describe('jupiter swap builder', () => {
 
 describe('USD price cap', () => {
   const policy: BuyPolicy = {
-    targets: { common: 1, uncommon: 0, rare: 0, grail: 0 }, tierMinUsd: { common: 0, uncommon: 50, rare: 150, grail: 500 },
+    tierMix: { common: 1, uncommon: 0, rare: 0, grail: 0 }, payoutDays: 14, stockDays: 3, tierMinUsd: { common: 0, uncommon: 50, rare: 150, grail: 500 },
     requiredTraits: { Type: 'Card' }, valueTrait: 'Insured Value', gradeTrait: 'Grade', maxPriceToValue: 1,
     maxLamportsPerCard: 10_000_000_000n, maxCardsPerTick: 5, maxOverheadBps: 800, maxPriceUsd: 25,
   };

@@ -6,7 +6,7 @@ import type { GameServer } from "./types";
 
 // In-memory stand-in so the UI is fully usable before the real game server exists.
 // Single process only; state resets on restart.
-interface PlayerState { shards: number; tickets: number; history: HistoryEntry[]; day: string; freeUsed: number; opensToday: number; frozen: boolean; wallet: string }
+interface PlayerState { shards: number; tickets: number; history: HistoryEntry[]; day: string; freeUsed: number; opensToday: number; frozen: boolean; wallet: string; welcome?: Crate | "done" }
 const g = globalThis as unknown as { __lotusStub?: { players: Map<string, PlayerState>; byWallet: Map<string, string>; crates: Map<string, Crate>; odds: OddsRow[]; inventory: AdminInventoryItem[] } };
 const db = (g.__lotusStub ??= <NonNullable<typeof g.__lotusStub>>{
   players: new Map(), byWallet: new Map(), crates: new Map(),
@@ -104,26 +104,41 @@ export const stubServer: GameServer = {
     // Crates only exist inside a launch city, same as the real seeder.
     const inCity = SERVICE_CITIES.some((c) => haversineM(c, ping) <= c.radiusKm * 1000);
     if (ping.anywhere || process.env.LOTUS_CITY_GATE === "off" || inCity) seedAround(ping.lat, ping.lng);
-    return live().filter((c) => haversineM(c, ping) < NEARBY_RADIUS_M);
+    const p = player(playerId);
+    // Same as the real server: one welcome crate per player, next to them, until it's opened.
+    if (!p.welcome) {
+      const bearing = (randomInt(3600) / 10) * (Math.PI / 180);
+      const dist = 15 + randomInt(16);
+      p.welcome = {
+        id: randomUUID(), lat: ping.lat + (dist * Math.cos(bearing)) / 111320, lng: ping.lng + (dist * Math.sin(bearing)) / (111320 * Math.cos((ping.lat * Math.PI) / 180)),
+        expiresAt: new Date(Date.now() + 30 * 86400_000).toISOString(), kind: "standard", welcome: true,
+      };
+    }
+    const own = p.welcome === "done" ? [] : [p.welcome];
+    return [...own, ...live().filter((c) => haversineM(c, ping) < NEARBY_RADIUS_M)];
   },
   async openCrate(playerId, crateId, ping) {
     const p = today(player(playerId));
-    const c = db.crates.get(crateId);
+    const w = p.welcome && p.welcome !== "done" && p.welcome.id === crateId ? p.welcome : null;
+    const c = w ?? db.crates.get(crateId);
     if (p.frozen) return { kind: "rejected", code: "frozen", message: "Account frozen" };
     if (!c) return { kind: "rejected", code: "taken", message: "Another collector got to this crate first" };
     if (new Date(c.expiresAt) < new Date()) return { kind: "rejected", code: "expired", message: "This crate is gone" };
     if (haversineM(c, ping) > OPEN_RADIUS_M) return { kind: "rejected", code: "too_far", message: "Get closer to the crate" };
 
-    // The free open of the day, else a ticket.
-    const free = p.freeUsed < FREE_OPENS_PER_DAY;
-    if (!free && p.tickets < 1) {
+    // The welcome crate takes no open and always pays shards. Otherwise: the free open of the day, else a ticket.
+    const free = !w && p.freeUsed < FREE_OPENS_PER_DAY;
+    if (!w && !free && p.tickets < 1) {
       return { kind: "rejected", code: "daily_limit", message: `That's all ${FREE_OPENS_PER_DAY} of today's opens. Bank ${SHARDS_PER_TICKET} shards for a ticket and you can open another.` };
     }
-    if (free) p.freeUsed++;
-    else p.tickets--;
-    db.crates.delete(crateId);
-    p.opensToday++;
-    let r = roll();
+    if (w) p.welcome = "done";
+    else {
+      if (free) p.freeUsed++;
+      else p.tickets--;
+      db.crates.delete(crateId);
+      p.opensToday++;
+    }
+    let r = w ? "shards" : roll();
     let result: HistoryEntry["result"];
     const item = r !== "shards" ? db.inventory.find((i) => i.tier === r && i.status === "available") : undefined;
     if (item) {

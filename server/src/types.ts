@@ -20,6 +20,8 @@ export interface CrateView {
   expiresAt: string;
   /** Launch city this world crate belongs to. Absent on the retired per-player crates. */
   city?: string;
+  /** The player's own first crate: always shards, costs no daily open. */
+  welcome?: boolean;
 }
 
 /** What a player may open today. See tickets.ts. */

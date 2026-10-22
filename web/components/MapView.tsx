@@ -298,7 +298,7 @@ export default function MapView() {
   const dist = target && fix ? haversineM(target, fix) : null;
   // UI hint only; the server re-checks distance and decides.
   const near = dist !== null && dist <= OPEN_RADIUS_M;
-  const canOpen = balances?.opensLeft !== 0;
+  const canOpen = !!target?.welcome || balances?.opensLeft !== 0; // the welcome crate costs no open
   // UI hint only; the server re-reads the chain and decides. Shown up front so nobody walks to a
   // crate they can't open yet.
   const hold = balances?.coinHold?.gate === "on" ? balances.coinHold : null;
@@ -388,7 +388,7 @@ export default function MapView() {
               <CrateGlyph size={30} gold={target.kind === "ticket"} />
             </div>
             <div className="grow">
-              <strong>{target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
+              <strong>{target.welcome ? "Welcome crate" : target.kind === "ticket" ? "Ticket crate" : "Street crate"}</strong>
               <p className={near && canOpen && !needsCoin ? "drawer-sub ok" : "drawer-sub"}>{dist === null ? "Finding you…" : !near ? `${Math.round(dist)} m away · get within ${OPEN_RADIUS_M} m` : needsCoin || canOpen ? "You're in range" : `You've used all ${balances?.freeOpensPerDay ?? 0} of today's opens. ${balances?.shardsPerTicket ?? 0} shards make a ticket.`}</p>
             </div>
             <button className="icon-btn" onClick={() => setSel(null)} aria-label="Close"><IconClose size={16} /></button>
@@ -407,7 +407,7 @@ export default function MapView() {
                 : !near ? "Walk closer"
                 : needsCoin ? "Opening paused"
                 : !canOpen ? "Come back tomorrow"
-                : balances?.nextOpenCostsTicket ? <><Ticket size={18} />Open with a ticket</>
+                : balances?.nextOpenCostsTicket && !target.welcome ? <><Ticket size={18} />Open with a ticket</>
                 : "Open crate"}
             </button>
           )}

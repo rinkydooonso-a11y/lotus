@@ -251,6 +251,8 @@ async function main() {
           minVaultShareBps: config.FEE_MIN_VAULT_SHARE_BPS,
           minClaim: BigInt(config.FEE_CLAIM_MIN_BASE_UNITS),
           minGasLamports: BigInt(Math.round(config.FEE_CLAIMER_MIN_GAS_SOL * 1e9)),
+          solUsd: () => jupiterSolUsd(),
+          cardFundBps: config.FEE_CARD_FUND_BPS,
           log,
         };
       }
@@ -304,7 +306,9 @@ async function main() {
           gateway,
           market,
           policy: {
-            targets: config.BUY_TARGETS,
+            tierMix: config.BUY_TIER_MIX,
+            payoutDays: config.LOTUS_POOL_PAYOUT_DAYS,
+            stockDays: config.BUY_STOCK_DAYS,
             tierMinUsd: config.BUY_TIER_MIN_USD,
             requiredTraits: config.BUY_REQUIRED_TRAITS,
             valueTrait: config.BUY_VALUE_TRAIT,

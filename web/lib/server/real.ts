@@ -6,7 +6,7 @@ import type { AdminInventoryItem, Crate, FeedPull, OpenResult, Tier } from "../t
 import type { GameServer } from "./types";
 
 /** Adapter over `@lotus/server` (see /lotus/docs/contracts.md). */
-const crateView = (c: srv.CrateView): Crate => ({ id: c.id, lat: c.lat, lng: c.lng, kind: c.kind, expiresAt: c.expiresAt, city: c.city });
+const crateView = (c: srv.CrateView): Crate => ({ id: c.id, lat: c.lat, lng: c.lng, kind: c.kind, expiresAt: c.expiresAt, city: c.city, welcome: c.welcome });
 const cardResult = (item: PrizeItemView, status: string): Extract<OpenResult, { kind: "card" }> => ({
   kind: "card", tier: item.tier, cardName: item.cardName, grade: item.grade ?? "Graded", valueUsd: item.valueUsd, imageUrl: item.imageUrl ?? undefined, nftMint: item.nftMint,
   status: status === "sent" ? "sent" : status === "failed" ? "failed" : "pending",
@@ -30,7 +30,11 @@ export const realServer: GameServer = {
   async nearbyCrates(playerId, p) {
     // The ping still matters: anti-cheat walks it to check the player really travelled here.
     await srv.recordLocationPing({ playerId, lat: p.lat, lng: p.lng, accuracyM: p.accuracyM, clientTs: p.ts, deviceId: p.deviceId, ip: p.ip ?? null });
-    return (await srv.nearbyCrates({ lat: p.lat, lng: p.lng })).map(crateView);
+    const [world, welcome] = await Promise.all([
+      srv.nearbyCrates({ lat: p.lat, lng: p.lng }),
+      srv.welcomeCrate({ playerId, lat: p.lat, lng: p.lng }), // the player's own first crate, until they open it
+    ]);
+    return [...(welcome ? [welcome] : []), ...world].map(crateView);
   },
   async openCrate(playerId, crateId, p) {
     const player = await srv.getPlayer(playerId);

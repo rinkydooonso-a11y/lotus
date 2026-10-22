@@ -77,8 +77,9 @@ The program enforces the cap, so a leaked hot-wallet key loses at most a week's 
   chain: its verified collection must be `BUY_COLLECTION_ADDRESS` and `BUY_UPDATE_AUTHORITY` must be
   among its authorities, and traits, insured value and grade come from the asset's own metadata (DAS).
 - Listings must carry `BUY_REQUIRED_TRAITS` (required: the buyer won't start without it) and an insured value (`BUY_VALUE_TRAIT`); the tier
-  comes from that value, and the price must be at most `BUY_MAX_PRICE_TO_VALUE` of it and under
-  `BUY_MAX_USD_PER_CARD` (25) and `BUY_MAX_SOL_PER_CARD`. SOL/USD comes from Jupiter and is bounds-checked.
+  comes from that value, and the price must be at most `BUY_MAX_PRICE_TO_VALUE` of it, under
+  `BUY_MAX_USD_PER_CARD` (1000), under `BUY_MAX_SOL_PER_CARD`, and under one day's release (pool / `LOTUS_POOL_PAYOUT_DAYS`). SOL/USD comes from Jupiter and is bounds-checked.
+- **It only spends the card fund.** The fund is a dollar ledger (`prize_fund_entries`): the seed, plus `FEE_CARD_FUND_BPS` of every fee claim, minus what each card cost. Stock to hold is `BUY_STOCK_DAYS` of a day's release, split across tiers by `BUY_TIER_MIX`; a tier with no card it can afford passes its share down. With no cash it waits for fees. Add the seed with `scripts/fund-entry.ts`.
 - Cards cost USDC. If the hot wallet lacks it, a Jupiter SOL to USDC swap for exactly the shortfall is checked (only swap-shaped instructions, hot wallet pays, simulated: SOL out within budget, USDC in at least the shortfall) and sent first; leftover USDC is reused.
 - The buy transaction is still checked as if untrusted: only compute-budget, memo, SOL
   transfer, ATA-create and known buy instructions may appear (anything else, e.g. a listing of a

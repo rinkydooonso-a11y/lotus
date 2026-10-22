@@ -31,7 +31,16 @@ export interface FeeGateway {
 
 export interface ClaimLog {
   /** `amount` is a decimal string in whole units, exact (no float rounding); null if unknown. */
-  recordClaim(e: { signature: string; amount: string | null; asset: string; note: string }): Promise<void>;
+  recordClaim(e: {
+    signature: string;
+    amount: string | null;
+    asset: string;
+    note: string;
+    /** Dollar value of the claim at the time, 2 decimals; null if unknown. */
+    usdValue: string | null;
+    /** Dollars to add to the card fund (the card share of the claim), 2 decimals; null adds nothing. */
+    fundUsd: string | null;
+  }): Promise<void>;
 }
 
 export interface FeeClaimDeps {
@@ -43,6 +52,10 @@ export interface FeeClaimDeps {
   /** Skip claims that would bring the vault less than this, in base units of the quote. */
   minClaim: bigint;
   minGasLamports: bigint;
+  /** SOL price in USD, to value a claim paid in SOL. Without it nothing is added to the card fund. */
+  solUsd?: () => Promise<number>;
+  /** Share of each claim that goes to the card fund, in basis points (7000 = 70%). */
+  cardFundBps: number;
   log: Logger;
 }
 
@@ -56,6 +69,19 @@ export type FeeClaimOutcome =
 export function toDecimal(baseUnits: bigint, decimals: number): string {
   const s = baseUnits.toString().padStart(decimals + 1, '0');
   return decimals === 0 ? s : `${s.slice(0, -decimals)}.${s.slice(-decimals)}`;
+}
+
+/** What a claim was worth in dollars, or null when it can't be priced (not SOL, no price feed, unread amount). */
+async function claimUsd(deps: FeeClaimDeps, asset: string, received: bigint | null, decimals: number): Promise<number | null> {
+  if (asset !== 'SOL' || received === null || !deps.solUsd) return null;
+  try {
+    const price = await deps.solUsd();
+    if (!(price > 0)) return null;
+    return (Number(received) / 10 ** decimals) * price;
+  } catch (err) {
+    deps.log.warn('could not price a fee claim; not adding it to the card fund', { error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
 }
 
 export async function runFeeClaimTick(deps: FeeClaimDeps): Promise<FeeClaimOutcome> {
@@ -84,11 +110,14 @@ export async function runFeeClaimTick(deps: FeeClaimDeps): Promise<FeeClaimOutco
 
   const { asset, decimals } = await gateway.quote();
   const { signature, received } = await gateway.sendDistribution();
+  const usd = await claimUsd(deps, asset, received, decimals);
   await deps.claims.recordClaim({
     signature,
     amount: received === null ? null : toDecimal(received, decimals),
     asset,
-    note: `pump.fun creator fees, vault share ${mine.shareBps / 100}%${received === null ? ' (amount not read, see tx)' : ''}`,
+    note: `pump.fun creator fees, vault share ${mine.shareBps / 100}%${received === null ? ' (amount not read, see tx)' : ''}${usd === null ? '; not added to the card fund, add it by hand' : ''}`,
+    usdValue: usd === null ? null : usd.toFixed(2),
+    fundUsd: usd === null ? null : ((usd * deps.cardFundBps) / 10_000).toFixed(2),
   });
   log.info('creator fees claimed into the vault', { signature, received: received?.toString() ?? null, asset });
   return { kind: 'claimed', signature, received: received?.toString() ?? null, asset };

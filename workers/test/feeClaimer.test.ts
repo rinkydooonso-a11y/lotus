@@ -20,17 +20,39 @@ class FakeGateway implements FeeGateway {
 
 function setup() {
   const gateway = new FakeGateway();
-  const claims: Array<{ signature: string; amount: string | null; asset: string; note: string }> = [];
-  const deps = { gateway, claims: { recordClaim: async (e: (typeof claims)[number]) => { claims.push(e); } }, vault: VAULT, minVaultShareBps: 10_000, minClaim: 1_000_000n, minGasLamports: 5_000_000n, log: silentLog };
+  const claims: Array<{ signature: string; amount: string | null; asset: string; note: string; usdValue: string | null; fundUsd: string | null }> = [];
+  const deps = { gateway, claims: { recordClaim: async (e: (typeof claims)[number]) => { claims.push(e); } }, vault: VAULT, minVaultShareBps: 10_000, minClaim: 1_000_000n, minGasLamports: 5_000_000n, cardFundBps: 7_000, log: silentLog };
   return { gateway, claims, deps };
 }
+
+describe('fee claimer card fund', () => {
+  it('prices a SOL claim and sends 70% of it to the card fund', async () => {
+    const s = setup();
+    s.gateway.quote = async () => ({ asset: 'SOL', decimals: 9 });
+    s.gateway.pending = 2_000_000_000n; // 2 SOL
+    await runFeeClaimTick({ ...s.deps, minClaim: 1n, solUsd: async () => 150 });
+    expect(s.claims[0]).toMatchObject({ asset: 'SOL', usdValue: '300.00', fundUsd: '210.00' });
+  });
+
+  it('still records the claim when the price feed fails, adding nothing to the fund', async () => {
+    const s = setup();
+    s.gateway.quote = async () => ({ asset: 'SOL', decimals: 9 });
+    s.gateway.pending = 2_000_000_000n;
+    await runFeeClaimTick({ ...s.deps, minClaim: 1n, solUsd: async () => { throw new Error('down'); } });
+    expect(s.claims[0]).toMatchObject({ usdValue: null, fundUsd: null });
+  });
+});
 
 describe('fee claimer', () => {
   it('claims into the vault and logs exactly what landed', async () => {
     const s = setup();
     const r = await runFeeClaimTick(s.deps);
     expect(r).toEqual({ kind: 'claimed', signature: 'sig1', received: '2500000', asset: 'CARDSmint' });
-    expect(s.claims).toEqual([{ signature: 'sig1', amount: '2.500000', asset: 'CARDSmint', note: 'pump.fun creator fees, vault share 100%' }]);
+    // The coin is quoted in its own token here, which has no price feed: nothing goes to the card fund.
+    expect(s.claims).toEqual([{
+      signature: 'sig1', amount: '2.500000', asset: 'CARDSmint', usdValue: null, fundUsd: null,
+      note: 'pump.fun creator fees, vault share 100%; not added to the card fund, add it by hand',
+    }]);
   });
 
   it('never sends when the vault is not a shareholder', async () => {

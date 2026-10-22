@@ -62,6 +62,7 @@ export function rollTier(weights: Weights, rng: Rng): RollTier {
 
 export interface BudgetCaps {
   maxCards?: number;
+  /** Fixed dollar ceiling for the day. Tests and the LOTUS_MAX_CARD_VALUE_PER_DAY emergency dial. */
   maxValueUsd?: number;
 }
 
@@ -69,48 +70,112 @@ export interface DailyBudget {
   cardsAwarded: number;
   valueAwardedUsd: number;
   cardsLeft: number;
+  /** What may still be awarded right now: the hours released so far, minus what has been awarded. */
   valueLeftUsd: number;
-  /** No card may be awarded for the rest of the UTC day. */
+  /** The whole day's dollar ceiling. */
+  ceilingUsd: number;
+  /** No card may be awarded for the rest of the UTC day (or hour, for the dollar part). */
   exhausted: boolean;
 }
 
-const caps = (c: BudgetCaps = {}) => ({
-  maxCards: c.maxCards ?? GAME.maxCardsPerDay,
-  maxValueUsd: c.maxValueUsd ?? GAME.maxCardValueUsdPerDay,
-});
+export interface PrizePool {
+  /** Card fund cash: seed money plus the card share of fee claims, minus card purchases. */
+  cashUsd: number;
+  /** Cards in stock, counted at what they cost us (insured value if the cost is unknown). */
+  stockUsd: number;
+  poolUsd: number;
+}
 
-/** What today's prize budget has left. A single-row lookup, cheap enough to run on every open. */
-export async function dailyBudget(db: Q = getPool(), c: BudgetCaps = {}): Promise<DailyBudget> {
-  const { maxCards, maxValueUsd } = caps(c);
-  const r = await db.query<{ cards_awarded: number; value_awarded_usd: string }>(
-    `SELECT cards_awarded, value_awarded_usd FROM prize_budget_days WHERE budget_day = ${UTC_DAY}`,
+/**
+ * The money the game pays prizes from. Cards count at cost, not insured value, so buying a card
+ * listed below its insured value can't make the pool, and so the ceiling, grow.
+ */
+export async function prizePool(db: Q): Promise<PrizePool> {
+  const r = await db.query<{ cash: string; stock: string }>(
+    `SELECT (SELECT COALESCE(sum(usd), 0) FROM prize_fund_entries)::text AS cash,
+            (SELECT COALESCE(sum(COALESCE(cost_usd, value_usd)), 0) FROM inventory_items WHERE status = 'available')::text AS stock`,
   );
-  const cardsAwarded = r.rows[0]?.cards_awarded ?? 0;
-  const valueAwardedUsd = Number(r.rows[0]?.value_awarded_usd ?? 0);
-  const cardsLeft = Math.max(0, maxCards - cardsAwarded);
-  const valueLeftUsd = Math.max(0, maxValueUsd - valueAwardedUsd);
-  return { cardsAwarded, valueAwardedUsd, cardsLeft, valueLeftUsd, exhausted: cardsLeft <= 0 || valueLeftUsd <= 0 };
+  const cashUsd = Number(r.rows[0]?.cash ?? 0);
+  const stockUsd = Number(r.rows[0]?.stock ?? 0);
+  return { cashUsd, stockUsd, poolUsd: Math.max(0, cashUsd) + stockUsd };
+}
+
+/** A day's dollar ceiling from a pool: one payout-day's share, in whole cents, rounded down. */
+export const ceilingFromPool = (poolUsd: number, payoutDays: number = GAME.poolPayoutDays): number =>
+  Math.floor((poolUsd / Math.max(1, payoutDays)) * 100) / 100;
+
+interface DayBasis {
+  maxCards: number;
+  /** Set when a fixed ceiling replaces the pool-based one. */
+  fixedUsd: number | null;
+  ceilingUsd: number;
+  /** Hours of the day released so far, 1 to 24; 24 for a fixed ceiling. */
+  hours: number;
+  cardsAwarded: number;
+  valueAwardedUsd: number;
+}
+
+async function dayBasis(db: Q, c: BudgetCaps = {}): Promise<DayBasis> {
+  const maxCards = c.maxCards ?? GAME.maxCardsPerDay;
+  const fixed = c.maxValueUsd ?? (GAME.maxCardValueUsdPerDay > 0 ? GAME.maxCardValueUsdPerDay : null);
+  const r = await db.query<{ hour: number; cards_awarded: number | null; value_awarded_usd: string | null; ceiling_usd: string | null }>(
+    `SELECT extract(hour FROM now() AT TIME ZONE 'UTC')::int AS hour, b.cards_awarded, b.value_awarded_usd, b.ceiling_usd
+       FROM (SELECT 1) x LEFT JOIN prize_budget_days b ON b.budget_day = ${UTC_DAY}`,
+  );
+  const row = r.rows[0]!;
+  const ceilingUsd =
+    fixed ?? (row.ceiling_usd !== null ? Number(row.ceiling_usd) : ceilingFromPool((await prizePool(db)).poolUsd));
+  return {
+    maxCards,
+    fixedUsd: fixed,
+    ceilingUsd,
+    hours: fixed !== null ? 24 : row.hour + 1,
+    cardsAwarded: row.cards_awarded ?? 0,
+    valueAwardedUsd: Number(row.value_awarded_usd ?? 0),
+  };
+}
+
+/** What today's prize budget has left. Cheap enough to run on every open. */
+export async function dailyBudget(db: Q = getPool(), c: BudgetCaps = {}): Promise<DailyBudget> {
+  const b = await dayBasis(db, c);
+  const cardsLeft = Math.max(0, b.maxCards - b.cardsAwarded);
+  const released = (b.ceilingUsd * b.hours) / 24;
+  const valueLeftUsd = Math.max(0, Math.floor((released - b.valueAwardedUsd) * 100) / 100);
+  return {
+    cardsAwarded: b.cardsAwarded,
+    valueAwardedUsd: b.valueAwardedUsd,
+    cardsLeft,
+    valueLeftUsd,
+    ceilingUsd: b.ceilingUsd,
+    exhausted: cardsLeft <= 0 || valueLeftUsd <= 0,
+  };
 }
 
 /**
  * Books one card of `valueUsd` against today's budget. Returns false when it would go over either
  * ceiling, in which case the caller must not award the card. Must run inside the open transaction:
  * the conditional UPDATE is what makes the day's ceiling exact under concurrent wins.
+ *
+ * The ceiling is stored on the day's row when its first card is booked, so it doesn't move during
+ * the day. Only the first `hours` hours of it are spendable, which stops one busy hour taking the
+ * whole day; whatever an hour doesn't use carries into the next.
  */
 export async function claimBudgetSlot(c: PoolClient, valueUsd: number, b: BudgetCaps = {}): Promise<boolean> {
-  const { maxCards, maxValueUsd } = caps(b);
+  const basis = await dayBasis(c, b);
   const r = await c.query(
     // The SELECT ... WHERE guards the first card of a new day; the ON CONFLICT WHERE guards the rest.
-    `INSERT INTO prize_budget_days (budget_day, cards_awarded, value_awarded_usd)
-     SELECT ${UTC_DAY}, 1, $3::numeric WHERE 1 <= $1::int AND $3::numeric <= $2::numeric
+    `INSERT INTO prize_budget_days (budget_day, cards_awarded, value_awarded_usd, ceiling_usd)
+     SELECT ${UTC_DAY}, 1, $3::numeric, $4::numeric WHERE 1 <= $1::int AND $3::numeric <= $4::numeric * $5::int / 24
      ON CONFLICT (budget_day) DO UPDATE
         SET cards_awarded = prize_budget_days.cards_awarded + 1,
             value_awarded_usd = prize_budget_days.value_awarded_usd + $3::numeric,
+            ceiling_usd = COALESCE(prize_budget_days.ceiling_usd, $4::numeric),
             updated_at = now()
       WHERE prize_budget_days.cards_awarded + 1 <= $1::int
-        AND prize_budget_days.value_awarded_usd + $3::numeric <= $2::numeric
+        AND prize_budget_days.value_awarded_usd + $3::numeric
+              <= COALESCE($2::numeric, prize_budget_days.ceiling_usd, $4::numeric) * $5::int / 24
      RETURNING cards_awarded`,
-    [maxCards, maxValueUsd, valueUsd],
+    [basis.maxCards, basis.fixedUsd, valueUsd, basis.ceilingUsd, basis.hours],
   );
   return (r.rowCount ?? 0) === 1;
 }
