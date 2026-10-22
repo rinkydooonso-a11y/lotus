@@ -1,12 +1,7 @@
-/** CardQuest mark: an isometric crate with a star on the lid, in the accent purples. */
+/** CardQuest mark: a CQ monogram in the brand blue-to-orange gradient. */
 export function Mark({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="mark">
-      <path d="M24 4 43 14.5 24 25 5 14.5z" fill="#c9adff" />
-      <path d="M5 14.5 24 25v19L5 33.5z" fill="#8a4dff" />
-      <path d="M43 14.5 24 25v19l19-10.5z" fill="#5a2fae" />
-      <path d="M24 9.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" fill="#fff" />
-    </svg>
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className="mark"><defs><linearGradient id="cqm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2f8bff"/><stop offset=".5" stop-color="#ff5a4a"/><stop offset="1" stop-color="#ff9a3c"/></linearGradient></defs><g fill="none" stroke="url(#cqm)" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"><rect x="5" y="9" width="24" height="30" rx="4" transform="rotate(-8 17 24)"/><rect x="19" y="9" width="24" height="30" rx="4" transform="rotate(8 31 24)"/><path d="M17 20h-4v8h4M28 31l8 7M31 20h4v8h-4z"/></g></svg>
   );
 }
 

@@ -53,8 +53,8 @@ function addCityLayers(m: maplibregl.Map) {
     type: "geojson",
     data: { type: "FeatureCollection", features: SERVICE_CITIES.map((c) => ({ type: "Feature", properties: { name: c.name }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) },
   });
-  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 6, 30], "circle-color": "#a066ff", "circle-opacity": 0.35, "circle-blur": 1 } });
-  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#a066ff", "circle-stroke-width": 2.5 } });
+  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 6, 30], "circle-color": "#4d9aff", "circle-opacity": 0.35, "circle-blur": 1 } });
+  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#4d9aff", "circle-stroke-width": 2.5 } });
   if (!m.getStyle().glyphs) return;
   m.addLayer({
     id: "cities-label", type: "symbol", source: "cities", minzoom: 1.2, maxzoom: 10,
@@ -250,8 +250,8 @@ export default function MapView() {
     const paint = () => {
       if (!m.getLayer("cities-dot")) return;
       const isSel = ["==", ["get", "name"], city] as maplibregl.ExpressionSpecification;
-      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#a066ff", "#ffffff"]);
-      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#a066ff"]);
+      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#4d9aff", "#ffffff"]);
+      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#4d9aff"]);
       m.setPaintProperty("cities-dot", "circle-radius", ["interpolate", ["linear"], ["zoom"], 0, ["case", isSel, 5.5, 3.5], 6, ["case", isSel, 9, 6]]);
       m.setPaintProperty("cities-glow", "circle-opacity", ["case", isSel, 0.7, 0.3]);
     };
