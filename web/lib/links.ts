@@ -9,6 +9,7 @@ export const LINKS = {
   xHandle: "@cardquestsol",
   pump: `https://pump.fun/coin/${COIN_ADDRESS}`,
   collectorCrypt: "https://collectorcrypt.com",
+  vault: "https://collectorcrypt.com/account/2p7bfhKWbx9jf2sKtjxeNFTjVUsR7NZxwWboUFCeNcYH",
 };
 
 export const coinLive = !LINKS.coin.includes("PLACEHOLDER");
