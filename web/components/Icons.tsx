@@ -29,8 +29,8 @@ export const IconX = ({ size = 15, ...p }: P) => <svg width={size} height={size}
 export function Shard({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className="gem">
-      <path d="M12 2.5 20 9l-8 12.5L4 9z" fill="#8a4dff" />
-      <path d="M12 2.5 20 9h-8z" fill="#c9adff" />
+      <path d="M12 2.5 20 9l-8 12.5L4 9z" fill="#2f7bff" />
+      <path d="M12 2.5 20 9h-8z" fill="#9cc7ff" />
       <path d="M12 2.5 4 9h8z" fill="#a983ff" />
       <path d="M4 9h8v12.5z" fill="#6d35e0" />
     </svg>
@@ -49,7 +49,7 @@ export function Ticket({ size = 16 }: { size?: number }) {
 
 /** Isometric crate glyph, in purple or (ticket crates) gold. */
 export function CrateGlyph({ size = 32, gold = false }: { size?: number; gold?: boolean }) {
-  const [lid, l, r] = gold ? ["#ffe08f", "#e0a92d", "#a8771a"] : ["#c9adff", "#8a4dff", "#5a2fae"];
+  const [lid, l, r] = gold ? ["#ffe08f", "#e0a92d", "#a8771a"] : ["#9cc7ff", "#2f7bff", "#1a4fb8"];
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
       <path d="M24 4 43 14.5 24 25 5 14.5z" fill={lid} />
