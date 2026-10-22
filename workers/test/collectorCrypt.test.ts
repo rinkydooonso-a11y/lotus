@@ -73,13 +73,13 @@ describe('parseListing', () => {
 
 describe('listings API', () => {
   const item = (mint: string, price: number, extra: object = {}) => ({
-    nftAddress: mint, nftStandard: 'core', type: 'Card', itemName: mint, grade: '9', insuredValue: '40',
+    nftAddress: mint, nftStandard: 'core', type: 'Card', category: 'Pokemon', itemName: mint, grade: '9', insuredValue: '40',
     owner: { wallet: 'seller1' }, listing: { price, currency: 'USDC', marketplace: 'CC' }, ...extra,
   });
 
   it('maps a card to a USDC listing with a SOL-equivalent price rounded up', () => {
     const l = toListing(item('m1', 20.5), 100)!;
-    expect(l).toMatchObject({ mint: 'm1', seller: 'seller1', priceUsdc: 20_500_000n, attributes: { Type: 'Card', 'Insured Value': '40', Grade: '9' } });
+    expect(l).toMatchObject({ mint: 'm1', seller: 'seller1', priceUsdc: 20_500_000n, attributes: { Type: 'Card', Category: 'Pokemon', 'Insured Value': '40', Grade: '9', 'The Grade': '9' } });
     expect(l.priceLamports).toBe(205_000_000n);
   });
 
@@ -88,6 +88,18 @@ describe('listings API', () => {
     expect(toListing(item('b', 5, { listing: { price: 5, currency: 'SOL' } }), 100)).toBeNull();
     expect(toListing(item('c', 0), 100)).toBeNull();
     expect(toListing({ ...item('d', 5), owner: undefined }, 100)).toBeNull();
+  });
+
+  it('asks the API for one category when configured', async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ filterNFtCard: [item('p', 5)] }) };
+    }) as unknown as typeof fetch;
+    await createCollectorCrypt({ collection: COLLECTION.toBase58(), pages: 1, category: 'Pokemon', fetchImpl }).listings(100);
+    expect(decodeURIComponent(urls[0]!)).toContain('categories[]=Pokemon');
+    await createCollectorCrypt({ collection: COLLECTION.toBase58(), pages: 1, fetchImpl }).listings(100);
+    expect(urls[1]).not.toContain('categories');
   });
 
   it('reads pages, stops on a short page, and returns cheapest first', async () => {

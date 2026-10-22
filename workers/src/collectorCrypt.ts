@@ -96,6 +96,8 @@ export interface CollectorCryptConfig {
   collection: string;
   /** Listing pages of 30 to read per tick. */
   pages: number;
+  /** Only ask the API for this category (for example 'Pokemon'). The buyer still checks the Category trait on chain. */
+  category?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -129,7 +131,8 @@ export function toListing(it: ApiItem, solUsd: number): Listing | null {
     priceUsdc,
     name: it.itemName ?? 'Collector Crypt card',
     image: it.image ?? null,
-    attributes: { Type: it.type ?? '', 'Insured Value': String(it.insuredValue ?? ''), Grade: it.grade ?? '' },
+    // 'The Grade' is what the on-chain metadata calls it; 'Grade' is kept for older settings.
+    attributes: { Type: it.type ?? '', Category: it.category ?? '', 'Insured Value': String(it.insuredValue ?? ''), Grade: it.grade ?? '', 'The Grade': it.grade ?? '' },
     raw: {},
   };
 }
@@ -141,7 +144,9 @@ export function createCollectorCrypt(cfg: CollectorCryptConfig): Market {
     async listings(solUsd: number) {
       const out: Listing[] = [];
       for (let page = 1; page <= cfg.pages; page++) {
-        const res = await f(`https://api.collectorcrypt.com/marketplace?page=${page}&step=${STEP}`, {
+        const q = new URLSearchParams({ page: String(page), step: String(STEP) });
+        if (cfg.category) q.append('categories[]', cfg.category);
+        const res = await f(`https://api.collectorcrypt.com/marketplace?${q}`, {
           headers: { accept: 'application/json' },
           signal: AbortSignal.timeout(15_000),
         });

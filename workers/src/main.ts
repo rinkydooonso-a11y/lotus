@@ -303,7 +303,7 @@ async function main() {
     let deps: Parameters<typeof runBuyTick>[0] | null = null;
     loops.push(loop('card-buyer', config.BUY_INTERVAL_MS, async () => {
       if (!deps) {
-        const market = createCollectorCrypt({ collection: config.BUY_COLLECTION_ADDRESS!, pages: config.BUY_LISTING_PAGES });
+        const market = createCollectorCrypt({ collection: config.BUY_COLLECTION_ADDRESS!, pages: config.BUY_LISTING_PAGES, category: config.BUY_REQUIRED_TRAITS.Category });
         const buildBuyTx = createBuyCoreBuilder({ connection: new Connection(config.SOLANA_RPC_URL, 'confirmed'), collection: config.BUY_COLLECTION_ADDRESS! });
         const gateway = await createBuyerGateway({
           rpcUrl: config.SOLANA_RPC_URL,

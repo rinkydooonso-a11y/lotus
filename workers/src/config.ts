@@ -93,7 +93,8 @@ const EnvSchema = z.object({
   /** Traits a listing must have, e.g. "Type=Card;Grading Company=PSA". */
   BUY_REQUIRED_TRAITS: z.string().default(''),
   BUY_VALUE_TRAIT: z.string().min(1).default('Insured Value'),
-  BUY_GRADE_TRAIT: z.string().default('Grade'),
+  /** The on-chain trait that holds the grade, for example "GEM MINT 10". */
+  BUY_GRADE_TRAIT: z.string().default('The Grade'),
   /** The verified on-chain Collector Crypt collection and update authority. Required with the buyer. */
   BUY_COLLECTION_ADDRESS: base58Address.optional(),
   BUY_UPDATE_AUTHORITY: base58Address.optional(),
