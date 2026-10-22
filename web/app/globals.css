@@ -683,3 +683,4 @@ html:has(.home:not(.full)){overflow:hidden}
 .home:not(.full) .hero::after{display:none}
 .home:not(.full) .hero-copy{transform:translateY(-62%)}
 @media(max-width:899px){.home:not(.full) .hero-copy{bottom:calc(84px + var(--safe-b))}}
+.home:not(.full) .map-card.desk-qr{bottom:40px}
