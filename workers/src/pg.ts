@@ -367,14 +367,14 @@ export class PgClaimLog implements ClaimLog {
   constructor(private readonly db: pg.Pool) {}
 
   async recordClaim(e: {
-    signature: string; amount: string | null; asset: string; note: string; usdValue: string | null; fundUsd: string | null;
+    signature: string; amount: string | null; asset: string; note: string; usdValue: string | null; fundUsd: string | null; kind?: 'claim' | 'other';
   }): Promise<void> {
     const client = await this.db.connect();
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO treasury_events (kind, amount, asset, usd_value, tx_signature, note) VALUES ('claim', $1, $2, $3, $4, $5)`,
-        [e.amount, e.asset, e.usdValue, e.signature, e.note],
+        `INSERT INTO treasury_events (kind, amount, asset, usd_value, tx_signature, note) VALUES ($6, $1, $2, $3, $4, $5)`,
+        [e.amount, e.asset, e.usdValue, e.signature, e.note, e.kind ?? 'claim'],
       );
       // Keyed by signature, so a retry can never count the same claim into the card fund twice.
       if (e.fundUsd !== null && Number(e.fundUsd) > 0) {

@@ -105,3 +105,10 @@ The program enforces the cap, so a leaked hot-wallet key loses at most a week's 
 - Compressed transfers not built.
 - `PRIZE_COLLECTIONS` needs Collector Crypt's collection addresses.
 - `SQUADS_VAULT_ADDRESS` (optional) is the Squads vault address, read only. With it, inventory sync also checks the cards stored in the vault.
+
+## One-wallet mode (fees + cards on one wallet)
+
+Off by default. `ONE_WALLET_FEES=yes` (needs `PUMP_COIN_MINT`; do not set `FEE_CLAIMER_SECRET_KEY`) makes `HOT_WALLET_SECRET_KEY` claim its own creator fees. The coin must have been launched from that wallet, and the gateway refuses to start if its creator is someone else. Each run: claim what is waiting (at least `FEE_CLAIM_MIN_BASE_UNITS`), then swap whatever fee token the wallet holds into SOL (`swapToSol`: Jupiter exact-in, instructions checked, simulated, refused above `FEE_SWAP_MAX_IMPACT_BPS` of quoted impact), and credit `FEE_CARD_FUND_BPS` of the SOL received to the card fund, keyed by the swap signature so a retry can't double count. A claim is logged as a `claim` treasury event and a swap as an `other` one. Run `npx tsx scripts/swap-quote.ts <mint> <amount>` first to see whether the token has a route. Anything sent to this wallet in the fee token is swapped and credited the same way.
+
+`ONE_WALLET_BUYER=yes` (instead of `BUYER_SPENDING_LIMIT`) lets the card buyer spend the wallet's own SOL. Its other limits still apply: the fund ledger, the weekly cap `BUY_WEEKLY_MAX_SOL` and `BUY_GAS_RESERVE_SOL`.
+

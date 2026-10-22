@@ -343,7 +343,7 @@ export async function runBuyTick(deps: BuyDeps): Promise<BuyOutcome> {
     const shortfall = maxSpend + deps.gasReserveLamports - walletLamports;
     if (shortfall > 0n) {
       if (shortfall > limitRemainingLamports) {
-        log.warn('weekly budget used up; stopping until it resets', { remaining: limitRemainingLamports.toString(), needed: shortfall.toString() });
+        log.warn('not enough SOL in the buying wallet or in the spending limit; stopping until fees arrive or the limit resets', { remaining: limitRemainingLamports.toString(), needed: shortfall.toString() });
         return { kind: 'bought', cards: bought, spentLamports: spent.toString(), stopped: 'budget' };
       }
       const sig = await gateway.pullFromVault(shortfall);

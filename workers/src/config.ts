@@ -67,6 +67,19 @@ const EnvSchema = z.object({
    */
   BUYER_SPENDING_LIMIT: base58Address.optional(),
   /**
+   * One-wallet mode: HOT_WALLET_SECRET_KEY is also the coin's creator, so it claims its own creator
+   * fees (PUMP_COIN_MINT) and swaps them into SOL. 'yes' turns it on; no vault or Squads is involved.
+   */
+  ONE_WALLET_FEES: z.enum(['yes', 'no']).default('no'),
+  /** One-wallet mode: the card buyer spends the wallet's own SOL instead of drawing on a Squads spending limit. */
+  ONE_WALLET_BUYER: z.enum(['yes', 'no']).default('no'),
+  /** Slippage allowed when swapping claimed fee tokens into SOL. */
+  FEE_SWAP_SLIPPAGE_BPS: z.coerce.number().int().min(1).max(1_000).default(100),
+  /** A swap that Jupiter quotes with more price impact than this is not done (300 = 3%). */
+  FEE_SWAP_MAX_IMPACT_BPS: z.coerce.number().int().min(1).max(5_000).default(300),
+  /** Fee-token balances below this many base units are left to build up before swapping. */
+  FEE_SWAP_MIN_BASE_UNITS: z.string().regex(/^\d{1,30}$/).default('1'),
+  /**
    * How the stock value is split across tiers, as weights (they need not sum to 100). The stock
    * itself is sized from the prize pool, so there are no fixed card counts or dollar targets.
    */
@@ -142,17 +155,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (Boolean(parsed.data.SQUADS_MULTISIG_ADDRESS) !== Boolean(parsed.data.SQUADS_PROPOSER_SECRET_KEY)) {
     throw new Error('Invalid worker environment:\n  set both SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY, or neither');
   }
-  if (Boolean(parsed.data.PUMP_COIN_MINT) !== Boolean(parsed.data.FEE_CLAIMER_SECRET_KEY)) {
-    throw new Error('Invalid worker environment:\n  set both PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY, or neither');
+  if (parsed.data.ONE_WALLET_FEES === 'yes') {
+    if (!parsed.data.PUMP_COIN_MINT) throw new Error('Invalid worker environment:\n  ONE_WALLET_FEES needs PUMP_COIN_MINT');
+    if (parsed.data.FEE_CLAIMER_SECRET_KEY) {
+      throw new Error('Invalid worker environment:\n  ONE_WALLET_FEES claims with HOT_WALLET_SECRET_KEY; unset FEE_CLAIMER_SECRET_KEY (vault mode)');
+    }
+  } else {
+    if (Boolean(parsed.data.PUMP_COIN_MINT) !== Boolean(parsed.data.FEE_CLAIMER_SECRET_KEY)) {
+      throw new Error('Invalid worker environment:\n  set both PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY, or neither');
+    }
+    if (parsed.data.PUMP_COIN_MINT && !parsed.data.SQUADS_VAULT_ADDRESS) {
+      throw new Error('Invalid worker environment:\n  the fee claimer needs SQUADS_VAULT_ADDRESS');
+    }
   }
-  if (parsed.data.PUMP_COIN_MINT && !parsed.data.SQUADS_VAULT_ADDRESS) {
-    throw new Error('Invalid worker environment:\n  the fee claimer needs SQUADS_VAULT_ADDRESS');
+  if (parsed.data.ONE_WALLET_BUYER === 'yes' && parsed.data.BUYER_SPENDING_LIMIT) {
+    throw new Error('Invalid worker environment:\n  ONE_WALLET_BUYER spends the wallet directly; unset BUYER_SPENDING_LIMIT');
   }
   if (parsed.data.SQUADS_MIN_THRESHOLD < 2 && parsed.data.SQUADS_ALLOW_SINGLE_SIGNER !== SINGLE_SIGNER_PHRASE) {
     throw new Error(`Invalid worker environment:\n  SQUADS_MIN_THRESHOLD=1 also needs SQUADS_ALLOW_SINGLE_SIGNER=${SINGLE_SIGNER_PHRASE}`);
   }
-  if (parsed.data.BUYER_SPENDING_LIMIT) {
-    const missing = (['SQUADS_MULTISIG_ADDRESS', 'BUY_COLLECTION_ADDRESS', 'BUY_UPDATE_AUTHORITY'] as const).filter((k) => !parsed.data[k]);
+  if (parsed.data.BUYER_SPENDING_LIMIT || parsed.data.ONE_WALLET_BUYER === 'yes') {
+    const need = parsed.data.BUYER_SPENDING_LIMIT
+      ? (['SQUADS_MULTISIG_ADDRESS', 'BUY_COLLECTION_ADDRESS', 'BUY_UPDATE_AUTHORITY'] as const)
+      : (['BUY_COLLECTION_ADDRESS', 'BUY_UPDATE_AUTHORITY'] as const);
+    const missing = need.filter((k) => !parsed.data[k]);
     if (missing.length) throw new Error(`Invalid worker environment:\n  the card buyer needs ${missing.join(', ')}`);
     if (!parsed.data.BUY_REQUIRED_TRAITS.trim()) {
       throw new Error('Invalid worker environment:\n  the card buyer needs BUY_REQUIRED_TRAITS (it keeps merch and sealed product out)');

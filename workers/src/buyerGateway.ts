@@ -99,8 +99,9 @@ export function checkSwapInstructions(ixs: TransactionInstruction[], hot: string
 export interface BuyerGatewayConfig {
   rpcUrl: string;
   hot: Keypair;
-  multisigAddress: string;
-  spendingLimitAddress: string;
+  /** Both set: the buyer draws on a Squads spending limit. Both left out: it spends the wallet's own SOL (one-wallet mode). */
+  multisigAddress?: string;
+  spendingLimitAddress?: string;
   allowMainnet: string | undefined;
   /** Returns the serialized buy transaction for `buyer`. */
   buildBuyTx(listing: Listing, buyer: string): Promise<Uint8Array>;
@@ -159,12 +160,13 @@ export async function createBuyerGateway(
     throw new Error(`Refusing to buy cards on mainnet without LOTUS_ALLOW_MAINNET=${MAINNET_CONFIRMATION_PHRASE}.`);
   }
   const hot = cfg.hot.publicKey;
-  const multisigPda = new PublicKey(cfg.multisigAddress);
-  const spendingLimit = new PublicKey(cfg.spendingLimitAddress);
+  const limited = Boolean(cfg.multisigAddress && cfg.spendingLimitAddress);
+  const multisigPda = limited ? new PublicKey(cfg.multisigAddress!) : null;
+  const spendingLimit = limited ? new PublicKey(cfg.spendingLimitAddress!) : null;
 
   const readLimit = async () => {
-    const sl = await multisig.accounts.SpendingLimit.fromAccountAddress(connection, spendingLimit, 'confirmed');
-    if (!sl.multisig.equals(multisigPda)) throw new Error('spending limit belongs to a different multisig');
+    const sl = await multisig.accounts.SpendingLimit.fromAccountAddress(connection, spendingLimit!, 'confirmed');
+    if (!sl.multisig.equals(multisigPda!)) throw new Error('spending limit belongs to a different multisig');
     if (!sl.mint.equals(PublicKey.default)) throw new Error('spending limit is not for SOL');
     if (sl.vaultIndex !== 0) throw new Error('spending limit is not for vault 0');
     // Exactly the hot wallet on both sides: empty destinations would mean "anywhere" in Squads v4.
@@ -175,7 +177,7 @@ export async function createBuyerGateway(
     if (PERIOD_SECONDS[sl.period as number] === undefined) throw new Error('spending limit must reset (day, week or month), not be one-time');
     return sl;
   };
-  const initial = await readLimit();
+  const initial = limited ? await readLimit() : null;
 
   const state = async (signature: string) =>
     (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
@@ -261,10 +263,12 @@ export async function createBuyerGateway(
 
   return {
     hotWallet: hot.toBase58(),
-    limit: {
-      amountSol: Number(BigInt(initial.amount.toString())) / 1e9,
-      period: ({ 1: 'day', 2: 'week', 3: 'month' } as Record<number, string>)[initial.period as number]!,
-    },
+    limit: initial
+      ? {
+          amountSol: Number(BigInt(initial.amount.toString())) / 1e9,
+          period: ({ 1: 'day', 2: 'week', 3: 'month' } as Record<number, string>)[initial.period as number]!,
+        }
+      : { amountSol: 0, period: 'none (one-wallet mode)' },
 
     async verifyCard(listing) {
       const card = await cfg.getCard(listing.mint);
@@ -282,6 +286,8 @@ export async function createBuyerGateway(
     },
 
     async budget() {
+      // One-wallet mode has no vault to draw on: the wallet's own SOL is the whole budget.
+      if (!limited) return { walletLamports: BigInt(await connection.getBalance(hot, 'confirmed')), limitRemainingLamports: 0n };
       const sl = await readLimit();
       const period = PERIOD_SECONDS[sl.period as number];
       const now = Math.floor(Date.now() / 1000);
@@ -291,8 +297,9 @@ export async function createBuyerGateway(
     },
 
     async pullFromVault(lamports) {
+      if (!limited) throw new Error('no vault to pull from in one-wallet mode');
       const ix = multisig.instructions.spendingLimitUse({
-        multisigPda, member: hot, spendingLimit, vaultIndex: 0, amount: Number(lamports), decimals: 9, destination: hot,
+        multisigPda: multisigPda!, member: hot, spendingLimit: spendingLimit!, vaultIndex: 0, amount: Number(lamports), decimals: 9, destination: hot,
         memo: 'card buyer budget',
       });
       return sendAndConfirmTransaction(connection, new Transaction().add(ix), [cfg.hot], { commitment: 'confirmed' });

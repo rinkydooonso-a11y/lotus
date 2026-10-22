@@ -40,6 +40,8 @@ export interface ClaimLog {
     usdValue: string | null;
     /** Dollars to add to the card fund (the card share of the claim), 2 decimals; null adds nothing. */
     fundUsd: string | null;
+    /** Treasury event kind; a swap of already-claimed fees is 'other'. Defaults to 'claim'. */
+    kind?: 'claim' | 'other';
   }): Promise<void>;
 }
 
@@ -121,4 +123,117 @@ export async function runFeeClaimTick(deps: FeeClaimDeps): Promise<FeeClaimOutco
   });
   log.info('creator fees claimed into the vault', { signature, received: received?.toString() ?? null, asset });
   return { kind: 'claimed', signature, received: received?.toString() ?? null, asset };
+}
+
+
+// ---- One-wallet mode ------------------------------------------------------------------------------
+//
+// The coin's creator is the game's own wallet. It claims its creator fees by its own signature, swaps
+// them into SOL if the coin is paired with another token, and counts what it ends up with into the card
+// fund. Nothing here touches the vault.
+
+export interface CreatorFeeGateway {
+  quote(): Promise<{ asset: string; decimals: number; native: boolean }>;
+  /** SOL in the wallet, for gas. */
+  gasLamports(): Promise<bigint>;
+  /** Fees waiting for the creator in pump, in base units of the quote. */
+  claimable(): Promise<bigint>;
+  /** Claims them; `received` is what landed in the wallet (null if the node can't read it yet). */
+  claim(): Promise<{ signature: string; received: bigint | null }>;
+  /** The quote token the wallet holds (0 when the coin is paired with SOL). */
+  quoteTokenBalance(): Promise<bigint>;
+  /** Swaps exactly `amount` of the quote token into SOL, after checking and simulating the swap. */
+  swapToSol(amount: bigint): Promise<{ signature: string; lamports: bigint | null }>;
+}
+
+export interface CreatorFeeDeps {
+  gateway: CreatorFeeGateway;
+  claims: ClaimLog;
+  /** Claims below this many base units of the quote are left to build up. */
+  minClaim: bigint;
+  /** Token balances below this many base units of the quote are not swapped yet. */
+  minSwap: bigint;
+  minGasLamports: bigint;
+  /** SOL price in USD (already range-checked). A throw or non-positive price adds nothing to the fund. */
+  solUsd: () => Promise<number>;
+  cardFundBps: number;
+  log: Logger;
+}
+
+export type CreatorFeeOutcome =
+  | { kind: 'gas_low'; lamports: string }
+  | { kind: 'idle' }
+  | { kind: 'done'; claimed: string | null; swapped: string | null };
+
+async function lamportsUsd(deps: CreatorFeeDeps, lamports: bigint | null): Promise<number | null> {
+  if (lamports === null) return null;
+  try {
+    const price = await deps.solUsd();
+    return price > 0 ? (Number(lamports) / 1e9) * price : null;
+  } catch (err) {
+    deps.log.warn('could not price SOL; not adding to the card fund', { error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
+export async function runCreatorFeeTick(deps: CreatorFeeDeps): Promise<CreatorFeeOutcome> {
+  const { gateway, log } = deps;
+  const gas = await gateway.gasLamports();
+  if (gas < deps.minGasLamports) {
+    log.warn('fee wallet gas low; not claiming or swapping', { lamports: gas.toString() });
+    return { kind: 'gas_low', lamports: gas.toString() };
+  }
+  const { asset, decimals, native } = await gateway.quote();
+  let claimedSig: string | null = null;
+  let swappedSig: string | null = null;
+
+  // 1. Claim.
+  if ((await gateway.claimable()) >= deps.minClaim) {
+    const { signature, received } = await gateway.claim();
+    claimedSig = signature;
+    if (native) {
+      const usd = await lamportsUsd(deps, received);
+      await deps.claims.recordClaim({
+        signature,
+        amount: received === null ? null : toDecimal(received, decimals),
+        asset,
+        note: `pump.fun creator fees claimed by the game wallet${received === null ? ' (amount not read, see tx)' : ''}${usd === null ? '; not added to the card fund, add it by hand' : ''}`,
+        usdValue: usd === null ? null : usd.toFixed(2),
+        fundUsd: usd === null ? null : ((usd * deps.cardFundBps) / 10_000).toFixed(2),
+      });
+    } else {
+      // Not dollars until it is swapped; the swap below credits the fund.
+      await deps.claims.recordClaim({
+        signature,
+        amount: received === null ? null : toDecimal(received, decimals),
+        asset,
+        note: `pump.fun creator fees claimed by the game wallet; swapped to SOL next${received === null ? ' (amount not read, see tx)' : ''}`,
+        usdValue: null,
+        fundUsd: null,
+      });
+    }
+    log.info('creator fees claimed', { signature, received: received?.toString() ?? null, asset });
+  }
+
+  // 2. Swap whatever quote tokens the wallet holds, which also retries an earlier failed swap.
+  if (!native) {
+    const balance = await gateway.quoteTokenBalance();
+    if (balance >= deps.minSwap && balance > 0n) {
+      const { signature, lamports } = await gateway.swapToSol(balance);
+      swappedSig = signature;
+      const usd = await lamportsUsd(deps, lamports);
+      await deps.claims.recordClaim({
+        signature,
+        amount: lamports === null ? null : toDecimal(lamports, 9),
+        asset: 'SOL',
+        note: `${toDecimal(balance, decimals)} ${asset} swapped to SOL${lamports === null ? ' (amount not read, see tx)' : ''}${usd === null ? '; not added to the card fund, add it by hand' : ''}`,
+        usdValue: usd === null ? null : usd.toFixed(2),
+        fundUsd: usd === null ? null : ((usd * deps.cardFundBps) / 10_000).toFixed(2),
+        kind: 'other',
+      });
+      log.info('fee tokens swapped to SOL', { signature, tokens: balance.toString(), lamports: lamports?.toString() ?? null });
+    }
+  }
+
+  return claimedSig || swappedSig ? { kind: 'done', claimed: claimedSig, swapped: swappedSig } : { kind: 'idle' };
 }
