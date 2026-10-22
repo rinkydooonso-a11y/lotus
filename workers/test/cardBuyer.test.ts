@@ -47,6 +47,18 @@ describe('classify', () => {
   });
 });
 
+describe('category filter', () => {
+  const pokemonOnly = { ...policy, requiredTraits: { Type: 'Card', Category: 'Pokemon' }, gradeTrait: 'The Grade' };
+  const card = (category: string) => ({ ...listing('c', 0.2, 30), attributes: { Type: 'Card', Category: category, 'Insured Value': '30', 'The Grade': 'GEM MINT 10' } });
+
+  it('buys Pokemon and refuses other games', () => {
+    expect(classify(card('Pokemon'), pokemonOnly, SOL_USD)).toMatchObject({ tier: 'common', grade: 'GEM MINT 10' });
+    expect(classify(card('One Piece'), pokemonOnly, SOL_USD)).toBeNull();
+    expect(classify(card('Baseball'), pokemonOnly, SOL_USD)).toBeNull();
+    expect(classify({ ...card('Pokemon'), attributes: { Type: 'Card', 'Insured Value': '30' } }, pokemonOnly, SOL_USD)).toBeNull(); // no Category trait at all
+  });
+});
+
 describe('sizing', () => {
   it('scales everything with the pool and caps a card at one day of release', () => {
     const z = { common: 0, uncommon: 0, rare: 0, grail: 0 };
