@@ -37,6 +37,8 @@ interface CrateRow {
   kind: CrateKind;
   status: 'active' | 'opened' | 'expired';
   city: string | null;
+  welcome: boolean;
+  owner_id: string | null;
   spawned_at: Date;
   expires_at: Date;
   lat: number;
@@ -49,7 +51,7 @@ const reject = (code: OpenRejectCode, message: string): OpenCrateResult => ({ ok
 
 const TAKEN = 'Another collector got to this crate first';
 
-const CRATE_SQL = `SELECT id, kind, status, city, spawned_at, expires_at,
+const CRATE_SQL = `SELECT id, kind, status, city, welcome, spawned_for_player_id AS owner_id, spawned_at, expires_at,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng,
        ST_Distance(location, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography) AS distance_m,
        expires_at <= now() AS expired
@@ -122,6 +124,33 @@ async function replay(db: Pool | PoolClient, crateId: string, playerId: string):
 }
 
 /**
+ * The welcome crate: always shards, so there is nothing to reserve and no prize budget to touch,
+ * and it takes none of the day's opens or tickets. Runs inside the open transaction with the player
+ * row locked and the crate already checked, like the paid path.
+ */
+async function openWelcome(
+  c: PoolClient,
+  a: { inp: OpenCrateInput; lc: CrateRow; player: { shards: number; tickets: number }; ip: string | null; rng: Rng },
+): Promise<OpenCrateResult> {
+  const { inp, lc, player, ip, rng } = a;
+  const openingId = randomUUID();
+  const award = rng(GAME.shardsPerEmptyMin, GAME.shardsPerEmptyMax + 1);
+  const bal = applyShards(player.shards, player.tickets, award);
+  await c.query('UPDATE players SET shards = $2, tickets = $3 WHERE id = $1', [inp.playerId, bal.shards, bal.tickets]);
+  await c.query(`INSERT INTO crate_openings ${OPENING_COLS} VALUES ${OPENING_VALUES}`, [
+    openingId, lc.id, inp.playerId, inp.walletAddress, 'shards',
+    inp.lat, inp.lng, inp.accuracyM, lc.distance_m, inp.deviceId, ip,
+    'standard', false, 'shards', false, false, award, bal.ticketsAwarded, null, 'complete',
+  ]);
+  await c.query(`UPDATE crates SET status = 'opened', opened_at = now(), claimed_by_player_id = $2 WHERE id = $1`, [lc.id, inp.playerId]);
+  return {
+    ok: true, openingId, replayed: false, outcome: 'shards',
+    shardsAwarded: award, ticketsAwarded: bal.ticketsAwarded, shards: bal.shards, tickets: bal.tickets,
+    downgraded: false, budgetCapped: false, ticketSpent: false,
+  };
+}
+
+/**
  * Validates and opens a world crate. playerId and walletAddress must come from the authenticated
  * session. Crates are shared, so the two things this has to get right under load are:
  *
@@ -147,6 +176,8 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
   const pre = await db.query<CrateRow>(CRATE_SQL, [inp.crateId, inp.lat, inp.lng]);
   const crate = pre.rows[0];
   if (!crate) return reject('not_found', 'Crate not found');
+  // A welcome crate is its player's alone. To anyone else it does not exist.
+  if (crate.welcome && crate.owner_id !== inp.playerId) return reject('not_found', 'Crate not found');
   if (crate.status === 'opened') {
     return (await replay(db, crate.id, inp.playerId)) ?? reject('taken', TAKEN);
   }
@@ -228,6 +259,8 @@ export async function openCrate(input: OpenCrateInput, deps: OpenCrateDeps): Pro
       [inp.crateId, inp.lat, inp.lng, GAME.openRadiusM],
     );
     if (!near.rows[0]?.ok) return reject('too_far', `Get within ${GAME.openRadiusM} m`);
+
+    if (lc.welcome) return openWelcome(c, { inp, lc, player, ip, rng });
 
     // 6. Daily allowance. The first GAME.freeOpensPerDay opens of the UTC day are free; every
     // further open that day spends a ticket and rolls on the better 'ticket' odds. Both claims are

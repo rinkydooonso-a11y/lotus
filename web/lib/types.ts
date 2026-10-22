@@ -10,6 +10,8 @@ export interface Crate {
   kind: "standard" | "ticket";
   /** Launch city this crate was placed in. */
   city?: string;
+  /** The player's own first crate: always shards, costs no daily open. */
+  welcome?: boolean;
 }
 
 export interface LocationPing {

@@ -57,7 +57,7 @@ export async function giveTickets(playerId: string, n: number) {
 export const forcedRng = (roll: number): Rng => (min, max) => (max === 1_000_000 ? roll : min);
 // Bands are cumulative rarest first (grail, rare, uncommon, common, shards); see db/migrations/0008.
 export const ROLL_COMMON = 5_000; // inside the standard common band [2_550, 10_000)
-export const ROLL_TICKET_COMMON = 20_000; // ticket common [14_250, 50_000); shards on the standard table
+export const ROLL_TICKET_COMMON = 20_000; // ticket common [8_550, 30_000); shards on the standard table
 export const ROLL_SHARDS = 999_999;
 
 export const allow = async () => ({ ok: true as const });

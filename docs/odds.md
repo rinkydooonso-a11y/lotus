@@ -8,16 +8,16 @@ is spent. Live effective odds: `getPublicOdds(kind)`. Change with `setOdds`.
 Which table a roll uses depends on the open, not on the crate: every world crate is the same. A free
 open rolls on `standard`; an open that spends a ticket rolls on `ticket`.
 
-## Weights (seeded in 0001_init.sql, cut to these in 0008_ten_opens_one_percent.sql)
+## Weights (seeded in 0001_init.sql, cut in 0008_ten_opens_one_percent.sql; ticket opens cut to 3% in 0011_ticket_open_three_percent.sql)
 
 | tier | value band | free open (standard) | ticket open |
 |---|---|---|---|
-| grail | $300+ | 0.005% | 0.035% |
-| rare | $75–300 | 0.05% | 0.285% |
-| uncommon | $30–75 | 0.2% | 1.105% |
-| common | <$30 | 0.745% | 3.575% |
-| **any card** | | **1%** | **5%** |
-| shards (1–3) | | 99% | 95% |
+| grail | $300+ | 0.005% | 0.021% |
+| rare | $75–300 | 0.05% | 0.171% |
+| uncommon | $30–75 | 0.2% | 0.663% |
+| common | <$30 | 0.745% | 2.145% |
+| **any card** | | **1%** | **3%** |
+| shards (1–3) | | 99% | 97% |
 
 A street crate paying a card 1 in 100 times is the point, not a stinginess setting: ten opens a day at
 1% and one open a day at 10% cost the same per player, but the first is a game you keep playing. The
@@ -28,7 +28,7 @@ weight typo in a later migration fails the suite.
 ## What a day costs
 
 Expected card value per open at a full stock of average cards (common $25, uncommon $52, rare $187,
-grail $500): about $0.41 on a free open and $2.18 on a ticket open. What the stock really holds
+grail $500): about $0.41 on a free open and $1.31 on a ticket open. What the stock really holds
 depends on the prize pool: a small pool can only buy cheap cards, so rare and grail odds are zero
 until the stock has them (an empty tier moves its share to shards).
 

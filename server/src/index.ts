@@ -7,6 +7,7 @@ export { upsertPlayerByWallet, getPlayer, recordLocationPing, pruneLocationPings
 export { SERVICE_CITIES, cityFor } from './cities';
 export {
   nearbyCrates,
+  welcomeCrate,
   seedWorldCrates,
   expireStaleCrates,
   crateCountsByCity,

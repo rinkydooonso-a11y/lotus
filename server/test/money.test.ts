@@ -456,8 +456,8 @@ describe('published odds', () => {
     return (GAME.oddsTotal - w.shards) / GAME.oddsTotal;
   };
 
-  it('pays a card on 1% of street crates and 5% of ticket opens', async () => {
+  it('pays a card on 1% of street crates and 3% of ticket opens', async () => {
     expect(await cardRate('standard')).toBeCloseTo(0.01, 6);
-    expect(await cardRate('ticket')).toBeCloseTo(0.05, 6);
+    expect(await cardRate('ticket')).toBeCloseTo(0.03, 6);
   });
 });
