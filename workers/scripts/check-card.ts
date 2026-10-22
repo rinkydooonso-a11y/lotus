@@ -20,7 +20,7 @@ const rpc = process.env.HELIUS_DAS_URL ?? process.env.SOLANA_RPC_URL;
 const collection = process.env.BUY_COLLECTION_ADDRESS;
 if (!mint || !rpc || !collection) throw new Error('usage: check-card.ts <card address>  (needs SOLANA_RPC_URL and BUY_COLLECTION_ADDRESS)');
 const env = (k: string, d: string) => process.env[k] || d;
-const listingPages = Number(env('BUY_LISTING_PAGES', '5'));
+const listingPages = Number(env('BUY_LISTING_PAGES', '100'));
 const policy: BuyPolicy = {
   tierMix: parseMix(env('BUY_TIER_MIX', 'common:45,uncommon:30,rare:20,grail:5')),
   payoutDays: Number(env('LOTUS_POOL_PAYOUT_DAYS', '14')),
@@ -44,20 +44,20 @@ for (const a of asset.content?.metadata?.attributes ?? []) traits[a.trait_type] 
 console.log('on-chain traits:', JSON.stringify({ name: asset.content?.metadata?.name, ...traits }, null, 2));
 
 // The listings API is read cheapest first; look further than the buyer does so we can say where it falls.
-const all = await createCollectorCrypt({ collection, pages: Math.max(listingPages, 40) }).listings(solUsd);
+const all = await createCollectorCrypt({ collection, pages: listingPages }).listings(solUsd);
 const idx = all.findIndex((l) => l.mint === mint);
 if (idx < 0) {
   console.log(`not found among the ${all.length} cheapest USDC listings: it is not listed in USDC, is sold, or is priced above all of these.`);
   process.exit(0);
 }
 const listed = all[idx]!;
-console.log(`listed for $${Number(listed.priceUsdc) / 1e6} USDC; #${idx + 1} cheapest of ${all.length} read (the buyer reads the cheapest ${listingPages * 30})`);
+console.log(`listed for $${Number(listed.priceUsdc) / 1e6} USDC; #${idx + 1} cheapest of ${all.length} read (the buyer reads the newest ${listingPages * 30} listings each run)`);
 // The buyer judges the on-chain traits (verifyCard), so judge those, with the listing's price.
 const asBought: Listing = { ...listed, attributes: { ...listed.attributes, ...traits } };
 const r = explainListing(asBought, policy, solUsd);
 if ('candidate' in r) {
   console.log(`PASSES every rule: tier ${r.candidate.tier}, insured value $${r.candidate.valueUsd}, price $${r.candidate.priceUsd.toFixed(2)}, grade ${r.candidate.grade ?? '?'}`);
-  console.log(idx >= listingPages * 30 ? 'but it is beyond the listings the buyer reads each run, so it would not be seen.' : 'and it is within the listings the buyer reads. It is bought when its tier is short of stock and the fund can pay.');
+  console.log(idx >= listingPages * 30 ? 'but it is deeper than the listings the buyer reads each run, so it would not be seen.' : 'and it is within the listings the buyer reads. It is bought when its tier is short of stock and the fund can pay.');
 } else {
   console.log(`would NOT be bought: ${r.reason}`);
 }
