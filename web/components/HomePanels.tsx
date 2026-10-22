@@ -60,6 +60,7 @@ export function HeroCopy() {
           <WatchButton label="How it works" />
         </div>
       )}
+      <div className="hero-qr hide-phone"><QrCard className="qr-card" /></div>
     </div>
   );
 }

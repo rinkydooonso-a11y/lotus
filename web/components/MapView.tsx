@@ -199,7 +199,7 @@ export default function MapView() {
     if (!m) return;
     const touch = window.matchMedia("(pointer: coarse)").matches;
     const set = (h: { enable: () => void; disable: () => void }, on: boolean) => (on ? h.enable() : h.disable());
-    set(m.scrollZoom, full);
+    set(m.scrollZoom, full || !touch);
     set(m.dragPan, full || !touch);
     set(m.touchZoomRotate, full || !touch);
     set(m.touchPitch, full || !touch);
@@ -361,7 +361,7 @@ export default function MapView() {
       {/* Tickets are spent by opening, not by a button: the next open after the free one uses one. */}
       {balances && balances.tickets > 0 && <div className="ticket-fab" role="status"><Ticket size={18} />{balances.tickets} extra {balances.tickets === 1 ? "open" : "opens"}</div>}
 
-      {desktop && !fix && <div className="map-card desk-qr"><QrCard className="qr-card" /></div>}
+      {user && desktop && !fix && <div className="map-card"><QrCard className="qr-card" /></div>}
       {user && !desktop && geoErr && !(user.isAdmin && !fix) && <div className="map-card"><p className="map-card-line">{geoErr}</p></div>}
       {user && !desktop && !fix && (
         <div className="map-card">
