@@ -4,10 +4,12 @@
  *
  *   cd workers && npx tsx scripts/new-wallet.ts ~/lotus-prize-wallet.json
  *
- * The file is a JSON array of 64 numbers (HOT_WALLET_SECRET_KEY accepts it, and so does Phantom's
- * import). It is written with owner-only permissions and an existing file is never overwritten.
+ * Two owner-only files are written next to each other, and an existing file is never overwritten:
+ * <path> is a JSON array of 64 numbers (what HOT_WALLET_SECRET_KEY takes), and <path>.base58.txt is
+ * the same key as a base58 string (what Phantom's "Import private key" takes).
  */
 import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -17,4 +19,5 @@ const path = resolve(target.replace(/^~(?=\/)/, process.env.HOME ?? '~'));
 const kp = Keypair.generate();
 writeFileSync(path, JSON.stringify(Array.from(kp.secretKey)), { mode: 0o600, flag: 'wx' });
 console.log(`new wallet: ${kp.publicKey.toBase58()}`);
-console.log(`key saved to ${path} (owner-only). Back it up before relying on it.`);
+writeFileSync(`${path}.base58.txt`, bs58.encode(kp.secretKey), { mode: 0o600, flag: 'wx' });
+console.log(`key saved to ${path} and ${path}.base58.txt (owner-only). Back them up before relying on them.`);

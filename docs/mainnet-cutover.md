@@ -70,7 +70,7 @@ The buyer reads `api.collectorcrypt.com/marketplace`, re-reads each listing acco
 
 Do this if the wallet's key was exposed. The game only knows the wallet through `HOT_WALLET_SECRET_KEY` (Fly), so nothing else is hard-coded.
 
-1. Make a new wallet on a trusted machine: `cd workers && npx tsx scripts/new-wallet.ts ~/lotus-prize-wallet.json` (prints the address only; the key stays in the file). Back the file up, import it into Phantom if you want to see it there.
+1. Make a new wallet on a trusted machine: `cd workers && npx tsx scripts/new-wallet.ts ~/lotus-prize-wallet.json` (prints the address only; the key stays in the file). Back the files up. Import `<file>.base58.txt` into Phantom (Import private key) if you want to see it there.
 2. From the old wallet, send out everything in this order: cards (they are Metaplex Core assets, a normal transfer), any CARDS or other tokens, then the SOL last (it pays the fees).
 3. Set the new key as `HOT_WALLET_SECRET_KEY` on Fly and set `NEXT_PUBLIC_PRIZE_WALLET` (the address) in Vercel, then redeploy both.
 4. Inventory sync marks cards withheld while they are away from the wallet and makes them available again when they land in the new one.
