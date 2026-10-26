@@ -127,6 +127,13 @@ export default function MapView() {
       m.setProjection({ type: "globe" });
       m.setSky({ "sky-color": "#000000", "horizon-color": "#3b1f78", "fog-color": "#000000", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
       addCityLayers(m);
+      // Labels laid flat on the ground smear into tall blurry strips at the 55° street-level tilt (and on the globe),
+      // so keep point labels upright facing the screen; road names still follow their roads.
+      for (const l of m.getStyle().layers ?? []) {
+        if (l.type !== "symbol" || (l.layout as { "symbol-placement"?: string } | undefined)?.["symbol-placement"] === "line") continue;
+        m.setLayoutProperty(l.id, "text-pitch-alignment", "viewport");
+        m.setLayoutProperty(l.id, "text-rotation-alignment", "viewport");
+      }
       try { add3dBuildings(m); } catch { /* flat buildings are fine */ }
     });
     m.on("click", "cities-dot", (e) => {
