@@ -189,8 +189,26 @@ export default function MapView() {
     const mo = new MutationObserver((recs) => { if (recs.some((r) => !box.contains(r.target))) pad(); });
     mo.observe(document.querySelector(".home") ?? document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
     window.addEventListener("resize", pad);
+    // In-app wallet browsers (Phantom) grow and shrink their toolbars without always firing a resize on the map box,
+    // which leaves the GL buffer a different size from the canvas and stretches the whole map. Re-measure on every
+    // viewport change, and once more after it settles.
+    const vv = window.visualViewport;
+    let settle = 0;
+    const remeasure = () => {
+      m.resize(); pad();
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => { m.resize(); pad(); }, 350);
+    };
+    vv?.addEventListener("resize", remeasure);
+    window.addEventListener("orientationchange", remeasure);
+    window.addEventListener("pageshow", remeasure);
     map.current = m;
-    return () => { cancelAnimationFrame(raf); cancelAnimationFrame(padRaf); ro.disconnect(); mo.disconnect(); window.removeEventListener("resize", pad); m.remove(); map.current = null; };
+    return () => {
+      cancelAnimationFrame(raf); cancelAnimationFrame(padRaf); window.clearTimeout(settle); ro.disconnect(); mo.disconnect();
+      window.removeEventListener("resize", pad); vv?.removeEventListener("resize", remeasure);
+      window.removeEventListener("orientationchange", remeasure); window.removeEventListener("pageshow", remeasure);
+      m.remove(); map.current = null;
+    };
   }, []);
 
   // Until the map is full screen, scrolling the page wins: no wheel zoom, and on touch screens no one-finger pan.
