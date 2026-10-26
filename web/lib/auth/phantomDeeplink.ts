@@ -12,7 +12,7 @@ import { z } from "zod";
  * the injected-wallet path, so nothing decrypted here is trusted beyond "what to send to the server".
  */
 export const PHANTOM_UL = "https://phantom.app/ul/v1";
-export const CLUSTER = "devnet";
+export const CLUSTER = process.env.NEXT_PUBLIC_SOLANA_CLUSTER || "devnet";
 
 export interface DappKeys { publicKey: string; secretKey: string } // base58, x25519 (nacl.box)
 export function newDappKeys(): DappKeys {
