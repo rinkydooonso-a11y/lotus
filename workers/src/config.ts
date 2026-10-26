@@ -109,6 +109,10 @@ const EnvSchema = z.object({
   BUY_MAX_CARDS_PER_TICK: z.coerce.number().int().min(1).max(20).default(10),
   BUY_MAX_OVERHEAD_BPS: z.coerce.number().int().min(0).max(2000).default(800),
   BUY_GAS_RESERVE_SOL: z.coerce.number().min(0).default(0.05),
+  /** Where listings are found: the Collector Crypt website API, or the marketplace program's accounts (needs DAS). */
+  BUY_LISTING_SOURCE: z.enum(['api', 'chain']).default('api'),
+  /** With BUY_LISTING_SOURCE=chain: how many of the cheapest listings to look up per tick. */
+  BUY_CHAIN_LISTING_LIMIT: z.coerce.number().int().min(1).max(1000).default(300),
   BUY_LISTING_PAGES: z.coerce.number().int().min(1).max(200).default(100),
   BUY_INTERVAL_MS: z.coerce.number().int().min(300_000).default(3_600_000),
   SOL_USD_MIN: z.coerce.number().positive().default(20),

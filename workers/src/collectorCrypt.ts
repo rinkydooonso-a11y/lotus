@@ -14,7 +14,9 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
+import { base58 } from '@metaplex-foundation/umi/serializers';
 import type { Listing, Market } from './cardBuyer.js';
+import type { DasAsset } from './das.js';
 
 /**
  * Collector Crypt's own marketplace (an Anchor program). Cards are Metaplex Core assets listed for
@@ -43,6 +45,8 @@ export interface OnChainListing {
   collection: string;
   priceUsdc: bigint;
   collectionType: number;
+  /** Who paid the listing's rent. The buy must return the rent to this account (Collector Crypt sponsors some listings). */
+  rentPayer: string;
 }
 
 /** Pure: parses a listing account, or throws if it is not a Collector Crypt listing. */
@@ -55,11 +59,12 @@ export function parseListing(owner: string, data: Buffer): OnChainListing {
     collection: new PublicKey(data.subarray(72, 104)).toBase58(),
     collectionType: data[113]!,
     priceUsdc: data.readBigUInt64LE(105),
+    rentPayer: new PublicKey(data.subarray(130, 162)).toBase58(),
   };
 }
 
 /** Pure: the buy_core instruction. `expectedPrice` is USDC base units (6 decimals). */
-export function buyCoreInstruction(p: { buyer: PublicKey; seller: PublicKey; asset: PublicKey; collection: PublicKey; expectedPrice: bigint }): TransactionInstruction {
+export function buyCoreInstruction(p: { buyer: PublicKey; seller: PublicKey; rentReceiver: PublicKey; asset: PublicKey; collection: PublicKey; expectedPrice: bigint }): TransactionInstruction {
   const data = Buffer.alloc(16);
   CC_BUY_CORE_DISCRIMINATOR.copy(data, 0);
   data.writeBigUInt64LE(p.expectedPrice, 8);
@@ -71,7 +76,7 @@ export function buyCoreInstruction(p: { buyer: PublicKey; seller: PublicKey; ass
     keys: [
       meta(p.buyer, true, true),
       meta(p.seller, true),
-      meta(p.seller, true), // listing_rent_receiver
+      meta(p.rentReceiver, true), // listing_rent_receiver: the listing's rent payer, not always the seller
       meta(p.buyer, true, true), // rent_payer
       meta(ccMarketPda(), false),
       meta(ccWhitelistPda(p.collection), false),
@@ -191,9 +196,76 @@ export function createBuyCoreBuilder(cfg: { connection: Connection; collection: 
       instructions: [
         ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }),
         createAssociatedTokenAccountIdempotentInstruction(buyer, getAssociatedTokenAddressSync(USDC_MINT, buyer), buyer, USDC_MINT),
-        buyCoreInstruction({ buyer, seller, asset, collection, expectedPrice: l.priceUsdc }),
+        buyCoreInstruction({ buyer, seller, rentReceiver: new PublicKey(l.rentPayer), asset, collection, expectedPrice: l.priceUsdc }),
       ],
     }).compileToV0Message();
     return new VersionedTransaction(msg).serialize();
+  };
+}
+
+const LISTING_ACCOUNTS_CAP = 20_000;
+
+/**
+ * Listings read straight from the marketplace program, not from the website's API (which returns
+ * unlisted items first when sorted by price and only a first page when filtered by category).
+ * One getProgramAccounts call finds every listing of the pinned Core collection; the cheapest
+ * under `maxPriceUsd` get their traits from DAS, and the buyer's usual checks run on those.
+ */
+export function createOnChainListings(cfg: {
+  connection: Connection;
+  collection: string;
+  /** DAS getAssetBatch: traits come from the asset's own metadata. */
+  getAssets: (ids: string[]) => Promise<DasAsset[]>;
+  maxPriceUsd: number;
+  /** How many of the cheapest listings to look up per tick. */
+  limit: number;
+}): Market {
+  return {
+    async listings(solUsd: number) {
+      const accounts = await cfg.connection.getProgramAccounts(CC_PROGRAM, {
+        commitment: 'confirmed',
+        filters: [
+          { dataSize: LISTING_SIZE },
+          { memcmp: { offset: 0, bytes: base58.deserialize(Buffer.from(LISTING_DISCRIMINATOR, 'hex'))[0] } },
+          { memcmp: { offset: 72, bytes: cfg.collection } },
+          { memcmp: { offset: 113, bytes: base58.deserialize(Uint8Array.of(COLLECTION_TYPE_CORE))[0] } },
+        ],
+      });
+      if (accounts.length > LISTING_ACCOUNTS_CAP) throw new Error(`${accounts.length} listing accounts is more than expected; refusing to read them all`);
+      const maxMicro = BigInt(Math.floor(cfg.maxPriceUsd * 1e6));
+      const parsed = [];
+      for (const a of accounts) {
+        try {
+          const l = parseListing(a.account.owner.toBase58(), a.account.data);
+          if (l.collection === cfg.collection && l.collectionType === COLLECTION_TYPE_CORE && l.priceUsdc > 0n && l.priceUsdc <= maxMicro) parsed.push(l);
+        } catch {
+          // not a listing we understand: skip it
+        }
+      }
+      parsed.sort((a, b) => (a.priceUsdc < b.priceUsdc ? -1 : a.priceUsdc > b.priceUsdc ? 1 : 0));
+      const cheapest = parsed.slice(0, cfg.limit);
+      const byId = new Map<string, DasAsset>();
+      for (let i = 0; i < cheapest.length; i += 100) {
+        for (const asset of await cfg.getAssets(cheapest.slice(i, i + 100).map((l) => l.nft))) byId.set(asset.id, asset);
+      }
+      const out: Listing[] = [];
+      for (const l of cheapest) {
+        const asset = byId.get(l.nft);
+        if (!asset || !(solUsd > 0)) continue;
+        const attributes: Record<string, string> = {};
+        for (const a of asset.content?.metadata?.attributes ?? []) attributes[a.trait_type] = String(a.value);
+        out.push({
+          mint: l.nft,
+          seller: l.seller,
+          priceLamports: BigInt(Math.ceil((Number(l.priceUsdc) * 1000) / solUsd)),
+          priceUsdc: l.priceUsdc,
+          name: asset.content?.metadata?.name ?? 'Collector Crypt card',
+          image: asset.content?.links?.image ?? null,
+          attributes,
+          raw: {},
+        });
+      }
+      return out;
+    },
   };
 }

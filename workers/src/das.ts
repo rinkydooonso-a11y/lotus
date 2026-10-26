@@ -64,3 +64,16 @@ export async function dasGetAssetsByOwner(url: string, owner: string): Promise<D
 export function collectionOf(asset: DasAsset): string | null {
   return asset.grouping?.find((g) => g.group_key === 'collection')?.group_value ?? null;
 }
+
+/** Up to 1000 assets by id in one call; ids that DAS does not know are left out. */
+export async function dasGetAssetBatch(url: string, ids: string[]): Promise<DasAsset[]> {
+  if (ids.length === 0) return [];
+  const result = await dasCall(url, 'getAssetBatch', { ids });
+  if (!Array.isArray(result)) throw new Error('DAS getAssetBatch returned no list');
+  const out: DasAsset[] = [];
+  for (const raw of result) {
+    const parsed = DasAssetSchema.safeParse(raw);
+    if (parsed.success && !parsed.data.burnt) out.push(parsed.data);
+  }
+  return out;
+}
