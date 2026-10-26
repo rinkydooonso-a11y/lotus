@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
-  CC_PROGRAM, buyCoreInstruction, ccListingPda, ccMarketPda, ccWhitelistPda, createBuyCoreBuilder, createCollectorCrypt, parseListing, toListing,
+  CC_PROGRAM, buyCoreInstruction, ccListingPda, ccMarketPda, ccWhitelistPda, createBuyCoreBuilder, createCollectorCrypt, createOnChainListings, parseListing, toListing,
 } from '../src/collectorCrypt.js';
 import { createJupiterSwap } from '../src/jupiterSwap.js';
 import { checkBuyInstructions, checkSwapInstructions, checkNoHotAssetsWritable } from '../src/buyerGateway.js';
@@ -11,7 +11,7 @@ import { classify, type BuyPolicy, type Listing } from '../src/cardBuyer.js';
 const COLLECTION = new PublicKey('CCryptUfeFSZ3Fgc9FLeKrhLVAP67FSqi1GuVoj9CRac');
 const JUP = new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4');
 
-function listingData(p: { seller: PublicKey; nft: PublicKey; collection: PublicKey; price: bigint; type?: number }) {
+function listingData(p: { seller: PublicKey; nft: PublicKey; collection: PublicKey; price: bigint; type?: number; rentPayer?: PublicKey }) {
   const d = Buffer.alloc(162);
   Buffer.from('da2032492b861a3a', 'hex').copy(d, 0);
   p.seller.toBuffer().copy(d, 8);
@@ -19,6 +19,7 @@ function listingData(p: { seller: PublicKey; nft: PublicKey; collection: PublicK
   p.collection.toBuffer().copy(d, 72);
   d.writeBigUInt64LE(p.price, 105);
   d[113] = p.type ?? 3;
+  (p.rentPayer ?? p.seller).toBuffer().copy(d, 130);
   return d;
 }
 
@@ -33,7 +34,8 @@ describe('buy_core instruction', () => {
   const buyer = Keypair.generate().publicKey;
   const seller = Keypair.generate().publicKey;
   const asset = Keypair.generate().publicKey;
-  const ix = buyCoreInstruction({ buyer, seller, asset, collection: COLLECTION, expectedPrice: 31_500_000n });
+  const rentPayer = Keypair.generate().publicKey;
+  const ix = buyCoreInstruction({ buyer, seller, rentReceiver: rentPayer, asset, collection: COLLECTION, expectedPrice: 31_500_000n });
 
   it('encodes the discriminator and the USDC price like the live buy', () => {
     expect(ix.data.toString('hex')).toBe('a9e357ff4c56ff19e0a6e00100000000');
@@ -43,6 +45,9 @@ describe('buy_core instruction', () => {
     expect(ix.keys).toHaveLength(18);
     expect(ix.keys.filter((k) => k.isSigner).map((k) => k.pubkey.toBase58())).toEqual([buyer.toBase58(), buyer.toBase58()]);
     expect(ix.keys[1]!.pubkey.equals(seller)).toBe(true);
+    // The rent goes back to whoever paid it, which is not always the seller.
+    expect(ix.keys[2]).toMatchObject({ isWritable: true, isSigner: false });
+    expect(ix.keys[2]!.pubkey.equals(rentPayer)).toBe(true);
     expect(ix.keys[8]!.pubkey.equals(ccListingPda(asset, seller))).toBe(true);
     expect(ix.keys[6]).toMatchObject({ isWritable: true });
     expect(ix.keys[16]!.pubkey.equals(TOKEN_PROGRAM_ID)).toBe(true);
@@ -60,7 +65,7 @@ describe('parseListing', () => {
   const nft = Keypair.generate().publicKey;
   it('reads seller, asset, collection, price and type', () => {
     const l = parseListing(CC_PROGRAM.toBase58(), listingData({ seller, nft, collection: COLLECTION, price: 44_000_000n }));
-    expect(l).toEqual({ seller: seller.toBase58(), nft: nft.toBase58(), collection: COLLECTION.toBase58(), priceUsdc: 44_000_000n, collectionType: 3 });
+    expect(l).toEqual({ seller: seller.toBase58(), nft: nft.toBase58(), collection: COLLECTION.toBase58(), priceUsdc: 44_000_000n, collectionType: 3, rentPayer: seller.toBase58() });
   });
   it('refuses the wrong owner, size or discriminator', () => {
     const d = listingData({ seller, nft, collection: COLLECTION, price: 1n });
@@ -146,6 +151,15 @@ describe('buy transaction builder', () => {
     expect(() => checkBuyInstructions(ixs)).not.toThrow();
   });
 
+  it('returns the rent to the listing\'s rent payer when that is not the seller', async () => {
+    const sponsor = Keypair.generate().publicKey;
+    const data = listingData({ seller, nft: asset, collection: COLLECTION, price: 20_000_000n, rentPayer: sponsor });
+    const ixs = TransactionMessage.decompile(VersionedTransaction.deserialize(await build(base, data)).message).instructions;
+    expect(ixs[2]!.keys[1]!.pubkey.equals(seller)).toBe(true);
+    expect(ixs[2]!.keys[2]!.pubkey.equals(sponsor)).toBe(true);
+    expect(ixs[2]!.keys[3]!.pubkey.equals(hot)).toBe(true);
+  });
+
   it('refuses a missing listing, a moved price, another collection, a non-Core type or another seller', async () => {
     await expect(build(base, null)).rejects.toThrow(/no longer exists/);
     await expect(build({ ...base, priceUsdc: 10_000_000n }, good)).rejects.toThrow(/differs/);
@@ -225,5 +239,55 @@ describe('USD price cap', () => {
   it('rejects cards over $25 USDC and accepts at the cap', () => {
     expect(classify(l(25), policy, 100)).not.toBeNull();
     expect(classify(l(26), policy, 100)).toBeNull();
+  });
+});
+
+describe('on-chain listings', () => {
+  const nft = (n: number) => new PublicKey(Buffer.alloc(32, n));
+  const seller = Keypair.generate().publicKey;
+  const acct = (n: number, usd: number, over: Partial<Parameters<typeof listingData>[0]> = {}) => ({
+    pubkey: Keypair.generate().publicKey,
+    account: { owner: CC_PROGRAM, data: listingData({ seller, nft: nft(n), collection: COLLECTION, price: BigInt(usd * 1e6), ...over }) },
+  });
+  const das = (n: number) => ({
+    id: nft(n).toBase58(), interface: 'MplCoreAsset', ownership: { owner: seller.toBase58() },
+    content: { metadata: { name: `card${n}`, attributes: [{ trait_type: 'Type', value: 'Card' }, { trait_type: 'Insured Value', value: '40' }] } },
+  });
+  const make = (accounts: unknown[], calls: { filters?: unknown; batches: string[][] }, limit = 2) => createOnChainListings({
+    connection: { getProgramAccounts: async (_p: unknown, o: { filters: unknown }) => { calls.filters = o.filters; return accounts; } } as never,
+    collection: COLLECTION.toBase58(),
+    getAssets: async (ids) => { calls.batches.push(ids); return ids.map((id) => das(Buffer.from(new PublicKey(id).toBytes())[0]!)); },
+    maxPriceUsd: 25,
+    limit,
+  });
+
+  it('filters the program accounts on size, discriminator, collection and Core type', async () => {
+    const calls = { batches: [] as string[][] } as { filters?: Array<Record<string, any>>; batches: string[][] };
+    await make([], calls).listings(100);
+    expect(calls.filters).toHaveLength(4);
+    expect(calls.filters![0]).toEqual({ dataSize: 162 });
+    expect(calls.filters![2]).toEqual({ memcmp: { offset: 72, bytes: COLLECTION.toBase58() } });
+    expect(calls.filters![3]!.memcmp.offset).toBe(113);
+    expect(calls.batches).toEqual([]);
+  });
+
+  it('keeps the cheapest listings under the cap, with traits from DAS', async () => {
+    const calls = { batches: [] as string[][] };
+    const ls = await make([acct(1, 20), acct(2, 5), acct(3, 30), acct(4, 10), acct(5, 1, { collection: Keypair.generate().publicKey }), acct(6, 2, { type: 1 })], calls).listings(100);
+    expect(ls.map((l) => l.priceUsdc)).toEqual([5_000_000n, 10_000_000n]);
+    expect(ls[0]).toMatchObject({ mint: nft(2).toBase58(), seller: seller.toBase58(), name: 'card2', attributes: { Type: 'Card', 'Insured Value': '40' } });
+    expect(ls[0]!.priceLamports).toBe(50_000_000n);
+    expect(calls.batches).toHaveLength(1);
+  });
+
+  it('skips listings DAS does not know and accounts that are not listings', async () => {
+    const calls = { batches: [] as string[][] };
+    const junk = { pubkey: Keypair.generate().publicKey, account: { owner: CC_PROGRAM, data: Buffer.alloc(50) } };
+    const m = createOnChainListings({
+      connection: { getProgramAccounts: async () => [junk, acct(1, 5)] } as never,
+      collection: COLLECTION.toBase58(), getAssets: async () => [], maxPriceUsd: 25, limit: 5,
+    });
+    expect(await m.listings(100)).toEqual([]);
+    expect(calls.batches).toEqual([]);
   });
 });

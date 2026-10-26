@@ -24,9 +24,9 @@ import { createCreatorFeeGateway } from './creatorFees.js';
 import { runBuyTick } from './cardBuyer.js';
 import { createBuyerGateway } from './buyerGateway.js';
 import { jupiterSolUsd } from './magicEden.js';
-import { createBuyCoreBuilder, createCollectorCrypt } from './collectorCrypt.js';
+import { createBuyCoreBuilder, createCollectorCrypt, createOnChainListings } from './collectorCrypt.js';
 import { createJupiterSwap, createJupiterSwapToSol } from './jupiterSwap.js';
-import { dasGetAsset } from './das.js';
+import { dasGetAsset, dasGetAssetBatch } from './das.js';
 import { MAX_QUEUE_ATTEMPTS, runPrizeSenderTick } from './prizeSender.js';
 import { createSolanaChain } from './solanaChain.js';
 import { jsonLogger as log, type PrizeQueue } from './types.js';
@@ -303,7 +303,15 @@ async function main() {
     let deps: Parameters<typeof runBuyTick>[0] | null = null;
     loops.push(loop('card-buyer', config.BUY_INTERVAL_MS, async () => {
       if (!deps) {
-        const market = createCollectorCrypt({ collection: config.BUY_COLLECTION_ADDRESS!, pages: config.BUY_LISTING_PAGES, category: config.BUY_REQUIRED_TRAITS.Category });
+        const market = config.BUY_LISTING_SOURCE === 'chain'
+          ? createOnChainListings({
+            connection: new Connection(config.SOLANA_RPC_URL, 'confirmed'),
+            collection: config.BUY_COLLECTION_ADDRESS!,
+            getAssets: (ids) => dasGetAssetBatch(config.HELIUS_DAS_URL ?? config.SOLANA_RPC_URL, ids),
+            maxPriceUsd: config.BUY_MAX_USD_PER_CARD,
+            limit: config.BUY_CHAIN_LISTING_LIMIT,
+          })
+          : createCollectorCrypt({ collection: config.BUY_COLLECTION_ADDRESS!, pages: config.BUY_LISTING_PAGES, category: config.BUY_REQUIRED_TRAITS.Category });
         const buildBuyTx = createBuyCoreBuilder({ connection: new Connection(config.SOLANA_RPC_URL, 'confirmed'), collection: config.BUY_COLLECTION_ADDRESS! });
         const gateway = await createBuyerGateway({
           rpcUrl: config.SOLANA_RPC_URL,
