@@ -12,7 +12,7 @@ import { ResultModal } from "./ResultModal";
 import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { LINKS } from "@/lib/links";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
-import { isMobileUA } from "@/lib/auth/phantomDeeplink";
+import { inWalletBrowser, isMobileUA } from "@/lib/auth/phantomDeeplink";
 import { QrCard } from "./QrCard";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconArrowUpRight, IconClose, IconCoin, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
@@ -118,14 +118,17 @@ export default function MapView() {
   useEffect(() => {
     if (!el.current) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Wallet in-app browsers (Phantom on iOS) render the globe projection stretched vertically, labels and markers included,
+    // so they get the flat map instead.
+    const flat = inWalletBrowser(window as never, navigator.userAgent, navigator.maxTouchPoints ?? 0);
     const m = new maplibregl.Map({
       container: el.current, style: STYLE_URL, center: [-30, 28], zoom: globeZoom(), pitch: 0, maxPitch: 70,
       // Cap the render resolution so 3x phones stay smooth.
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: 150, attributionControl: { compact: true },
     });
     m.on("style.load", () => {
-      m.setProjection({ type: "globe" });
-      m.setSky({ "sky-color": "#000000", "horizon-color": "#3b1f78", "fog-color": "#000000", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
+      if (!flat) m.setProjection({ type: "globe" });
+      if (!flat) m.setSky({ "sky-color": "#000000", "horizon-color": "#3b1f78", "fog-color": "#000000", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
       addCityLayers(m);
       // Labels laid flat on the ground smear into tall blurry strips at the 55° street-level tilt (and on the globe),
       // so keep point labels upright facing the screen; road names still follow their roads.
