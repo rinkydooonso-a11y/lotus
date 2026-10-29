@@ -7,7 +7,7 @@ import { CardThumb } from "@/components/CardThumb";
 import { CrateGlyph } from "@/components/Icons";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { LINKS, coinLive } from "@/lib/links";
-import { CARD_RATE, COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS, SHARDS_PER_TICKET, TICKET_CARD_RATE } from "@/lib/rules";
+import { COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS, SHARDS_PER_TICKET } from "@/lib/rules";
 
 export const metadata: Metadata = { title: "How CardQuest works", description: "Walk to crates on the map, open them, and win real graded trading cards from a public vault." };
 
@@ -28,7 +28,6 @@ const rules = [
 const faq = [
   ["Is it free to play?", coinLive ? `Opening crates costs nothing, but you need to hold $${COIN_HOLD_USD} of ${LINKS.ticker} in your wallet to open them. We check when you open, and the amount is fixed for 48 hours once you qualify. If you drop below it in that window, opening pauses until the window ends.` : "Yes. Connecting a wallet and opening crates costs nothing."],
   ["Are the cards real?", "Yes. Each prize is a Collector Crypt NFT backed by a professionally graded physical card held in a vault. Keep it, sell it, or redeem it on Collector Crypt to have the card shipped."],
-  ["What are the odds?", `About ${(CARD_RATE * 100).toFixed(0)} in 100 street crates holds a card; a ticket open is about ${(TICKET_CARD_RATE * 100).toFixed(0)} in 100. Live per-tier odds are on the vault page, and they drop to zero for any tier the vault has run out of.`],
   ["What are shards and tickets?", `Crates without a card pay 1 to 3 shards. ${SHARDS_PER_TICKET} shards make a ticket, up to ${MAX_TICKETS}. Spending a ticket buys another open the same day, at much better odds.`],
   ["Why can't I see crates?", `Crates are only placed inside the ${SERVICE_CITIES.length} launch cities right now, and one near you may already have been opened. More cities open as the vault grows.`],
   ["Is CardQuest affiliated with Collector Crypt?", "No. We buy cards like any customer. Redemption and shipping happen on their site."],
