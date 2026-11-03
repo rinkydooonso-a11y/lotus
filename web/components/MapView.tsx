@@ -140,7 +140,7 @@ export default function MapView() {
     const m = new maplibregl.Map({
       container: el.current, style: STYLE_URL, center: [-30, 28], zoom: globeZoom(el.current), pitch: 0, maxPitch: 70,
       // Cap the render resolution so 3x phones stay smooth.
-      pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: 150, attributionControl: { compact: true },
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: 150, attributionControl: false,
     });
     m.on("style.load", () => {
       if (!flat) m.setProjection({ type: "globe" });
@@ -238,17 +238,12 @@ export default function MapView() {
     };
   }, []);
 
-  // Until the map is full screen, scrolling the page wins: no wheel zoom, and on touch screens no one-finger pan.
+  // The home page never scrolls, so the map always takes drags, pinches and the wheel: zoom into the globe right behind the pitch.
   useEffect(() => {
     const m = map.current;
     if (!m) return;
-    const touch = window.matchMedia("(pointer: coarse)").matches;
-    const set = (h: { enable: () => void; disable: () => void }, on: boolean) => (on ? h.enable() : h.disable());
-    set(m.scrollZoom, full || !touch);
-    set(m.dragPan, full || !touch);
-    set(m.touchZoomRotate, full || !touch);
-    set(m.touchPitch, full || !touch);
-  }, [full]);
+    for (const h of [m.scrollZoom, m.dragPan, m.touchZoomRotate, m.touchPitch]) h.enable();
+  }, []);
 
   // live location
   useEffect(() => {
@@ -393,7 +388,6 @@ export default function MapView() {
       <div ref={el} className="map" onClick={() => setSel(null)} />
 
       <div className="map-ctl">
-        {!full && <button className="map-pill" onClick={() => setExploring(true)}><IconExpand size={16} />Full screen</button>}
         {zoomedIn && (!full || exploring) && <button className="map-pill" onClick={toGlobe}><IconGlobe size={16} />Globe</button>}
         {(full || fix) && (
           <div className="map-stack">
