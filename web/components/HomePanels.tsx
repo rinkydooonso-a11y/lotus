@@ -3,41 +3,143 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
-import { setCity } from "@/lib/cityStore";
+import { pickCity, setCity, useCity } from "@/lib/cityStore";
 import { setExploring } from "@/lib/viewStore";
 import { usd } from "@/lib/format";
-import { COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
+import { COIN_HOLD_USD, FREE_OPENS_PER_DAY } from "@/lib/rules";
+import { OPEN_RADIUS_M } from "@/lib/geo";
 import { LINKS, coinLive } from "@/lib/links";
 import type { Feed, VaultStats } from "@/lib/types";
-import { CitySwap } from "./CitySwap";
 import { ConnectSheet } from "./ConnectSheet";
-import { SiteFooter } from "./Docs";
 import { openFilm } from "./Film";
-import { CrateGlyph, IconChevronRight, IconClose, IconPlay, Shard, Ticket } from "./Icons";
-import { Mark } from "./Logo";
-import { PullsShowcase } from "./PullsFeed";
+import { CrateGlyph, IconArrowUpRight, IconPlay, Shard, Ticket } from "./Icons";
 import { QrCard } from "./QrCard";
-import { CardThumb } from "./CardThumb";
+import { PullsShowcase } from "./PullsFeed";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
 export function WatchButton({ label = "Watch the film", className = "btn btn-lg btn-gray" }: { label?: string; className?: string }) {
   return <button className={className} onClick={openFilm}><IconPlay size={15} />{label}</button>;
 }
 
-export function ConnectButton({ className = "btn btn-lg" }: { className?: string }) {
+export function ConnectButton({ className = "btn btn-lg", label = "Connect wallet to play" }: { className?: string; label?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)}>Connect wallet to play</button>
+      <button className={className} onClick={() => setOpen(true)}>{label}</button>
       {open && <ConnectSheet onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-/** The pitch over the globe: one line of status, the headline, one sentence, two buttons. */
-export function HeroCopy() {
+/** A CardQuest-branded sample card in a slab. Art only: the real prizes show up in the live pulls below. */
+function BrandSlab({ n, tone, className = "" }: { n: string; tone: "pink" | "lime" | "ice"; className?: string }) {
+  return (
+    <div className={`bslab ${tone} ${className}`} aria-hidden="true">
+      <div className="bslab-label"><span>CARDQUEST</span><b>{n}</b></div>
+      <div className="bslab-art">
+        <span className="bslab-cq">CQ</span>
+        <span className="bslab-crate"><CrateGlyph size={54} /></span>
+        <span className="bslab-foil" />
+      </div>
+    </div>
+  );
+}
+
+/** The opening screen: one loud headline, one action (a QR on desktop, since crates only open on a phone), and a tile of art. */
+export function Hero() {
   const { user, balances } = useAuth();
   const walletBrowser = useInWalletBrowser();
+  const n = SERVICE_CITIES.length;
+  return (
+    <section className="hero2">
+      <div className="hero2-in wrap">
+        <div className="hero2-copy">
+          <p className="tagline"><span className="live-dot" />Live in {n} cities</p>
+          <h1 className="hero2-title">Find the crate.<br /><em>Pull the card.</em></h1>
+          <p className="hero2-lede">Graded trading cards are hidden in crates on real streets. Walk up to one with your phone, open it, and the card goes straight to your wallet.</p>
+          {walletBrowser && !user ? <WalletBrowserNotice /> : (
+            <div className="hero2-actions">
+              {!user && <ConnectButton className="btn btn-lg show-phone" label="Connect wallet to play" />}
+              <button className={user ? "btn btn-lg show-phone" : "btn btn-lg btn-gray show-phone"} onClick={() => setExploring(true)}>See the map</button>
+              {user && balances && (
+                <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
+                  <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ {balances.shardsPerTicket} shards</small></span>
+                  <span><Ticket size={18} /><b className="num">{balances.tickets}</b></span>
+                </Link>
+              )}
+              <Link href="/how" className="btn btn-lg btn-gray hide-phone">How it works</Link>
+            </div>
+          )}
+          <div className="hero2-qr hide-phone"><QrCard className="qr-card" /></div>
+        </div>
+        <div className="hero2-art" aria-hidden="true">
+          <div className="tile-map" />
+          <div className="ring40"><span>{OPEN_RADIUS_M} m</span></div>
+          <BrandSlab n="01" tone="pink" className="s-left" />
+          <BrandSlab n="02" tone="ice" className="s-right" />
+          <BrandSlab n="03" tone="lime" className="s-mid" />
+          <div className="hero2-crate"><CrateGlyph size={92} /></div>
+          <span className="sticker">{n} cities<br />live now</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Scrolling strip of the latest pulls, with house phrases as filler so it is never empty. */
+export function Marquee({ feed }: { feed: Feed | null }) {
+  const pulls = (feed?.recent ?? []).slice(0, 6).map((p) => `${p.grade} ${p.cardName} ${usd(p.valueUsd)}`);
+  const base = [`${SERVICE_CITIES.length} cities live`, `${FREE_OPENS_PER_DAY} free opens a day`, "Real graded cards", `Open within ${OPEN_RADIUS_M} m`, "Sent to your wallet"];
+  const items = pulls.length ? [...pulls.map((t) => `Just pulled: ${t}`), ...base] : base;
+  const row = (k: string) => <div className="mq-row" aria-hidden={k === "b"} key={k}>{items.map((t, i) => <span key={i}>{t}<i /></span>)}</div>;
+  return <div className="mq" role="marquee" aria-label="Latest pulls"><div className="mq-track">{row("a")}{row("b")}</div></div>;
+}
+
+const STEPS = [
+  { t: "Connect a wallet", d: "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction." },
+  { t: "Walk to a crate", d: `Crates sit on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within ${OPEN_RADIUS_M} metres to open one. First to arrive takes it.` },
+  { t: "Open it", d: `${FREE_OPENS_PER_DAY} free opens a day. Pull a graded card, sent straight to your wallet, or shards that add up to tickets for extra opens.` },
+];
+
+/** The counter: a paper-white band, so the page breaks rhythm. */
+export function HowSection() {
+  return (
+    <section className="paper" id="how-it-works">
+      <div className="wrap">
+        <div className="sec-head">
+          <p className="eyebrow">How it works</p>
+          <h2 className="big-h">Three steps.<br />One walk.</h2>
+        </div>
+        <ol className="how-list">
+          {STEPS.map((s, i) => (
+            <li key={s.t}><span className="how-n">0{i + 1}</span><div><h3>{s.t}</h3><p>{s.d}</p></div></li>
+          ))}
+        </ol>
+        <div className="how-actions">
+          <WatchButton label="Watch the film" className="btn btn-lg btn-ink" />
+          <Link href="/how" className="ink-link">Read the full guide<IconArrowUpRight size={15} /></Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function PullsSection({ feed }: { feed: Feed | null }) {
+  return (
+    <section className="pulls-sec" id="pulls">
+      <div className="wrap sec-head">
+        <p className="eyebrow"><span className="live-dot" />Live pulls</p>
+        <h2 className="big-h">Real cards. Real streets.</h2>
+        <p className="sec-sub">Every prize is a professionally graded card from a public vault, sent to the winner&apos;s wallet.</p>
+      </div>
+      <PullsShowcase feed={feed} />
+    </section>
+  );
+}
+
+/** Title and city list above the globe. Picking a city flies the globe there; it never asks for location. */
+export function GlobeHead() {
+  const city = useCity();
   const asked = useRef(false);
   useEffect(() => {
     if (asked.current) return;
@@ -45,160 +147,56 @@ export function HeroCopy() {
     void fetch("/api/where").then((r) => r.json()).then((j: { city: string | null }) => { if (j.city) setCity(j.city, false); }).catch(() => undefined);
   }, []);
   return (
-    <div className="hero-copy">
-      <p className="hero-live"><span className="live-dot" />Live in {SERVICE_CITIES.length} cities</p>
-      <h1 className="hero-title">Your next grail is hiding in <CitySwap />.</h1>
-      <p className="hero-lede">CardQuest hides crates on real streets in {SERVICE_CITIES.length} cities. Walk to one, open it on your phone, and you could win a real graded card, sent straight to your wallet.</p>
-      {walletBrowser && !user ? <WalletBrowserNotice /> : (
-        <div className="hero-actions">
-          <button className="btn btn-lg" onClick={() => setExploring(true)}>Explore the map</button>
-          {user && balances && (
-            <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
-              <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ {balances.shardsPerTicket} shards</small></span>
-              <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ {MAX_TICKETS} tickets</small></span>
-            </Link>
-          )}
-          <Link href="/how" className="btn btn-lg btn-gray">How it works</Link>
-        </div>
-      )}
-      <p className="hero-trust">Every prize is a professionally graded card from a public vault. Win one and redeem it for the physical card, or sell it, on Collector Crypt.</p>
-      <div className="hero-qr hide-phone"><QrCard className="qr-card" /></div>
+    <div className="globe-head">
+      <div className="sec-head">
+        <p className="eyebrow">Where it&apos;s live</p>
+        <h2 className="big-h">{SERVICE_CITIES.length} cities.<br />One map.</h2>
+        <p className="sec-sub">Crates only open on a phone, standing next to them. More cities open as the vault grows.</p>
+        <button className="btn btn-lg" onClick={() => setExploring(true)}>Open the map</button>
+      </div>
+      <ul className="city-grid" aria-label="Launch cities">
+        {SERVICE_CITIES.map((c, i) => (
+          <li key={c.name}><button className={c.name === city ? "on" : ""} onClick={() => pickCity(c.name)}><span className="mono">{String(i + 1).padStart(2, "0")}</span>{c.name}</button></li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function Stat({ value, label, children }: { value: string; label: string; children?: React.ReactNode }) {
-  return <div className="bignum"><b key={value} className="num tick">{value}</b><span>{label}</span>{children}</div>;
-}
-
-function Numbers({ feed, vault }: { feed: Feed | null; vault: VaultStats | null }) {
-  const n = (x: number) => x.toLocaleString("en-US");
-  return (
-    <div className="bignums">
-      <Stat value={feed ? usd(feed.totals.wonUsd) : "–"} label="won by players" />
-      <Stat value={feed ? n(feed.totals.cardsPulled) : "–"} label="cards pulled" />
-      <Stat value={feed ? n(feed.totals.collectors) : "–"} label="collectors" />
-      <Stat value={vault ? n(vault.cardsInVault) : "–"} label="cards in the vault"><a href={LINKS.vault} target="_blank" rel="noopener noreferrer" className="more">See them<IconChevronRight size={14} /></a></Stat>
-    </div>
-  );
-}
-
-const STEPS = [
-  { t: "Connect a wallet", d: "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction.", art: "wallet" },
-  { t: "Walk to a crate", d: `Crates sit on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within 40 metres to open one. First to arrive takes it.`, art: "walk" },
-  { t: "Open it", d: `${FREE_OPENS_PER_DAY} free opens a day. Pull a graded card, sent straight to your wallet, or shards that add up to tickets for extra opens.`, art: "open" },
-] as const;
-
-function StepArt({ art }: { art: (typeof STEPS)[number]["art"] }) {
-  if (art === "wallet") return (
-    <div className="art art-wallet" aria-hidden="true">
-      <div className="art-phone"><Mark size={30} /><span className="art-line" /><span className="art-line short" /><span className="art-btn">Sign message</span></div>
-    </div>
-  );
-  if (art === "walk") return (
-    <div className="art art-walk" aria-hidden="true">
-      <span className="art-radius" /><span className="art-crate"><CrateGlyph size={34} /></span><span className="art-path" /><span className="art-you" /><span className="art-dist">40 m</span>
-    </div>
-  );
-  return (
-    <div className="art art-open" aria-hidden="true">
-      <span className="art-glow" />
-      <div className="art-slab"><CardThumb tier="rare" grade="PSA 10" size="md" /></div>
-      <span className="art-shards"><Shard size={18} /><Shard size={14} /></span>
-    </div>
-  );
-}
-
-type Tab = "pulls" | "how" | "phone" | "more";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "pulls", label: "Live pulls" },
-  { id: "how", label: "How it works" },
-  { id: "phone", label: "Play on phone" },
-  { id: "more", label: "More" },
-];
-
-/** Tabs along the bottom of the globe: each opens its panel over the map, so the home page itself never scrolls. */
-export function HomeSections({ feed }: { feed: Feed | null }) {
-  const { user, loading } = useAuth();
-  const [tab, setTab] = useState<Tab | null>(null);
+export function NumbersBand({ feed }: { feed: Feed | null }) {
   const [vault, setVault] = useState<VaultStats | null>(null);
   useEffect(() => { void fetch("/api/vault").then((r) => (r.ok ? r.json() : null)).then((v: VaultStats | null) => v && setVault(v)).catch(() => undefined); }, []);
-  useEffect(() => {
-    if (!tab) return;
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setTab(null); };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [tab]);
+  const n = (x: number) => x.toLocaleString("en-US");
+  const cells = [
+    { v: String(SERVICE_CITIES.length), l: "cities live" },
+    { v: vault ? n(vault.cardsInVault) : "–", l: "cards in the vault", href: LINKS.vault },
+    { v: String(FREE_OPENS_PER_DAY), l: "free opens a day" },
+    { v: feed ? usd(feed.totals.wonUsd) : "–", l: "won by players" },
+  ];
   return (
-    <div className="home-tabs">
-      {tab && (
-        <div className="tab-panel" role="tabpanel">
-          <button className="tab-close" onClick={() => setTab(null)} aria-label="Close"><IconClose size={16} /></button>
-          {tab === "pulls" && (
-            <section className="sec sec-pulls" id="pulls">
-              <div className="wrap center">
-                <p className="kicker"><span className="live-dot" />Live pulls</p>
-                <h2 className="sec-title">Real cards, pulled on real streets.</h2>
-                <p className="sec-lede">Every prize is a professionally graded card from a public vault, sent to the winner&apos;s wallet.</p>
-              </div>
-              <PullsShowcase feed={feed} />
-              <div className="wrap"><Numbers feed={feed} vault={vault} /></div>
-            </section>
-          )}
-          {tab === "how" && (
-            <section className="sec sec-how" id="how-it-works">
-              <div className="wrap center">
-                <p className="kicker">How it works</p>
-                <h2 className="sec-title">Three steps, one walk.</h2>
-              </div>
-              <div className="wrap">
-                <ol className="steps3">
-                  {STEPS.map((s, i) => (
-                    <li key={s.t} className="tile">
-                      <StepArt art={s.art} />
-                      <div className="tile-copy"><span className="step-n">{i + 1}</span><h3>{s.t}</h3><p>{s.d}</p></div>
-                    </li>
-                  ))}
-                </ol>
-                <div className="sec-actions">
-                  <WatchButton label="Watch the film" />
-                  <Link href="/how" className="link-more">Read the full guide<IconChevronRight size={15} /></Link>
-                </div>
-              </div>
-            </section>
-          )}
-          {tab === "phone" && (
-            <section className="sec sec-phone">
-              <div className="wrap">
-                <div className="tile phone-tile">
-                  <div className="phone-copy">
-                    <p className="kicker">Made for the walk</p>
-                    <h2 className="sec-title left">Crates open on your phone.</h2>
-                    <p className="sec-lede left">You have to be next to a crate to open it, so scan the code and play on your phone. CardQuest runs in its browser.</p>
-                  </div>
-                  <QrCard className="qr-card big" />
-                </div>
-              </div>
-            </section>
-          )}
-          {tab === "more" && (
-            <section className="sec sec-cta">
-              <div className="wrap center">
-                <div className="cta-mark"><CrateGlyph size={64} /></div>
-                <h2 className="sec-title">Your first crate is waiting.</h2>
-                <p className="sec-lede">{coinLive ? `Hold $${COIN_HOLD_USD} of ${LINKS.ticker} to open crates.` : "Free to play."} 18+. Play where it&apos;s safe and legal.</p>
-                {!loading && !user && <div className="sec-actions"><ConnectButton /></div>}
-              </div>
-              <SiteFooter />
-            </section>
-          )}
-        </div>
-      )}
-      <nav className="tab-bar" role="tablist" aria-label="More about CardQuest">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(tab === t.id ? null : t.id)}>{t.label}</button>
+    <section className="numbers">
+      <div className="wrap nums-grid">
+        {cells.map((c) => (
+          <div key={c.l} className="nums-cell"><b className="num">{c.v}</b><span>{c.l}</span>{c.href && <a href={c.href} target="_blank" rel="noopener noreferrer">See them<IconArrowUpRight size={13} /></a>}</div>
         ))}
-      </nav>
-    </div>
+      </div>
+    </section>
   );
 }
+
+export function FinalCta() {
+  const { user, loading } = useAuth();
+  return (
+    <section className="final">
+      <div className="wrap final-in">
+        <h2 className="big-h">Your first crate<br />is waiting.</h2>
+        <div className="final-side">
+          <p>{coinLive ? `Hold $${COIN_HOLD_USD} of ${LINKS.ticker} to open crates.` : "Free to play."} 18+. Play where it&apos;s safe and legal.</p>
+          <div className="hero2-qr hide-phone"><QrCard className="qr-card ink" /></div>
+          {!loading && !user && <ConnectButton className="btn btn-lg btn-ink show-phone" label="Connect wallet to play" />}
+        </div>
+      </div>
+    </section>
+  );
+}
+
