@@ -25,7 +25,7 @@ const BEARING_3D = -17;
 const globeZoom = (box?: HTMLElement | null) => {
   // A globe is about 163 * 2^zoom px across; fill roughly 80% of the smaller side of its box.
   const side = box ? Math.min(box.clientWidth, box.clientHeight) : Math.min(window.innerWidth, window.innerHeight);
-  return Math.max(0.8, Math.min(3, Math.log2((side * 0.8) / 163)));
+  return Math.max(0.8, Math.min(3, Math.log2((side * (box && box.clientWidth >= 900 ? 0.86 : 0.8)) / 163)));
 };
 
 /** Brand the base map: lighter land on near-black sea so the continents read from space, and no country names on the globe. */

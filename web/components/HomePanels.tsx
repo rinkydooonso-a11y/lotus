@@ -4,17 +4,10 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { setCity } from "@/lib/cityStore";
-import { setTab, useTab } from "@/lib/tabStore";
-import { TIER_LABEL, usd } from "@/lib/format";
-import { FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
-import { OPEN_RADIUS_M } from "@/lib/geo";
-import { LINKS } from "@/lib/links";
-import type { Feed, Tier, VaultStats } from "@/lib/types";
+import { MAX_TICKETS } from "@/lib/rules";
 import { ConnectSheet } from "./ConnectSheet";
-import { SiteFooter } from "./Docs";
 import { openFilm } from "./Film";
-import { IconArrowUpRight, IconChevronRight, IconClose, IconPlay, Shard, Ticket } from "./Icons";
-import { PullsShowcase } from "./PullsFeed";
+import { IconPlay, Shard, Ticket } from "./Icons";
 import { QrCard } from "./QrCard";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 
@@ -59,125 +52,6 @@ export function HeroCopy() {
         </div>
       )}
       <div className="hero-qr hide-phone"><QrCard className="qr-card" /></div>
-    </div>
-  );
-}
-
-const TIERS: Tier[] = ["grail", "rare", "uncommon", "common"];
-const BANDS: Record<Tier, string> = { grail: "$300+", rare: "$75 to $300", uncommon: "$30 to $75", common: "Under $30" };
-const n = (x: number) => x.toLocaleString("en-US");
-
-function Big({ value, label, note }: { value: string; label: string; note?: string }) {
-  return <div className="bignum"><b key={value} className="num tick">{value}</b><span>{label}</span>{note && <small>{note}</small>}</div>;
-}
-
-function StatsPanel({ feed, vault }: { feed: Feed | null; vault: VaultStats | null }) {
-  return (
-    <section className="panel-sec">
-      <p className="eyebrow"><span className="live-dot" />Live stats</p>
-      <h2 className="panel-title">The game, right now.</h2>
-      <div className="bignums">
-        <Big value={feed ? n(feed.totals.cardsPulled) : "–"} label="cards pulled" />
-        <Big value={feed ? usd(feed.totals.wonUsd) : "–"} label="won by players" note="Insured value of every card pulled" />
-        <Big value={feed ? n(feed.totals.collectors) : "–"} label="collectors" note="Wallets that have pulled a graded card" />
-        <Big value={vault ? n(vault.cardsInVault) : "–"} label="cards in the vault" note={vault ? `${usd(vault.totalValueUsd)} insured` : undefined} />
-        <Big value={vault ? n(vault.cardsSent) : "–"} label="cards sent to wallets" />
-        <Big value={String(SERVICE_CITIES.length)} label="cities live" note={`${FREE_OPENS_PER_DAY} free opens a day, ${OPEN_RADIUS_M} m to open`} />
-      </div>
-      <div className="panel-actions"><a className="link-more" href={LINKS.vault} target="_blank" rel="noopener noreferrer">See every card in the vault<IconArrowUpRight size={15} /></a><Link href="/stats" className="link-more">All stats<IconChevronRight size={15} /></Link></div>
-    </section>
-  );
-}
-
-function CratesPanel({ vault }: { vault: VaultStats | null }) {
-  return (
-    <section className="panel-sec">
-      <p className="eyebrow">In the crates</p>
-      <h2 className="panel-title">What&apos;s in the vault.</h2>
-      <p className="panel-sub">Every crate rolls for a graded card. A tier with no cards in the vault pays shards instead, so we never award a card we don&apos;t hold.</p>
-      <ul className="tier-list">
-        {TIERS.map((t) => (
-          <li key={t} className={`t-${t}`}>
-            <span className="tier-chip" /><b className={`tc-${t}`}>{TIER_LABEL[t]}</b><span className="muted">{BANDS[t]}</span><span className="grow" />
-            <span className="tier-count"><b className="num">{vault ? vault.byTier[t].count : "–"}</b> {vault && vault.byTier[t].count === 1 ? "card" : "cards"}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function CollectorsPanel({ feed }: { feed: Feed | null }) {
-  return (
-    <section className="panel-sec">
-      <p className="eyebrow">Top collectors</p>
-      <h2 className="panel-title">Most valuable hauls.</h2>
-      <p className="panel-sub">Players by the value of the cards they pulled.</p>
-      {!feed ? <p className="muted">Loading…</p> : feed.collectors.length === 0 ? <p className="muted">No collectors yet. Be the first.</p> : (
-        <ol className="rank-list">
-          {feed.collectors.map((c, i) => (
-            <li key={c.collector}><span className={`rank r${i + 1}`}>{i + 1}</span><span className="grow mono">{c.collector}</span><span className="muted">{c.cards} card{c.cards === 1 ? "" : "s"}</span><b className="num">{usd(c.totalUsd)}</b></li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-const STEPS = [
-  { t: "Connect a wallet", d: "Phantom, Solflare or Backpack. Signing in is a free message, never a transaction." },
-  { t: "Walk to a crate", d: `Crates sit on streets, paths and parks in ${SERVICE_CITIES.length} cities. Get within ${OPEN_RADIUS_M} metres to open one. First to arrive takes it.` },
-  { t: "Open it", d: `${FREE_OPENS_PER_DAY} free opens a day. Pull a graded card, sent straight to your wallet, or shards that add up to tickets for extra opens.` },
-];
-
-function HowPanel() {
-  return (
-    <section className="panel-sec">
-      <p className="eyebrow">How it works</p>
-      <h2 className="panel-title">Three steps. One walk.</h2>
-      <ol className="steps-list">
-        {STEPS.map((s, i) => <li key={s.t}><span className="step-no">0{i + 1}</span><div><h3>{s.t}</h3><p>{s.d}</p></div></li>)}
-      </ol>
-      <div className="panel-actions">
-        <WatchButton label="Watch the film" />
-        <Link href="/how" className="link-more">Read the full guide<IconChevronRight size={15} /></Link>
-      </div>
-      <SiteFooter />
-    </section>
-  );
-}
-
-/** The panels the top bar opens over the globe, so the home page itself never scrolls. */
-export function HomeSections({ feed }: { feed: Feed | null }) {
-  const tab = useTab();
-  const [vault, setVault] = useState<VaultStats | null>(null);
-  useEffect(() => { void fetch("/api/vault").then((r) => (r.ok ? r.json() : null)).then((v: VaultStats | null) => v && setVault(v)).catch(() => undefined); }, []);
-  useEffect(() => {
-    if (!tab) return;
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setTab(null); };
-    const picked = () => setTab(null);
-    window.addEventListener("keydown", k);
-    window.addEventListener("cq:city", picked);
-    return () => { window.removeEventListener("keydown", k); window.removeEventListener("cq:city", picked); };
-  }, [tab]);
-  useEffect(() => () => setTab(null), []);
-  if (!tab) return null;
-  return (
-    <div className="home-tabs">
-      <div className="tab-panel" role="dialog" aria-label="Details">
-        <button className="tab-close" onClick={() => setTab(null)} aria-label="Close"><IconClose size={16} /></button>
-        {tab === "stats" && <StatsPanel feed={feed} vault={vault} />}
-        {tab === "crates" && <CratesPanel vault={vault} />}
-        {tab === "pulls" && (
-          <section className="panel-sec wide">
-            <p className="eyebrow"><span className="live-dot" />Pulls</p>
-            <h2 className="panel-title">Real cards, pulled on real streets.</h2>
-            <PullsShowcase feed={feed} />
-          </section>
-        )}
-        {tab === "collectors" && <CollectorsPanel feed={feed} />}
-        {tab === "how" && <HowPanel />}
-      </div>
     </div>
   );
 }
