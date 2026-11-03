@@ -133,6 +133,11 @@ export async function runFeeClaimTick(deps: FeeClaimDeps): Promise<FeeClaimOutco
 // fund. Nothing here touches the vault.
 
 export interface CreatorFeeGateway {
+  /**
+   * True when the fee platform pays the creator share into the wallet itself (Float), so there is no
+   * claim to make and the tick only sweeps what has landed.
+   */
+  readonly paidDirectly?: boolean;
   quote(): Promise<{ asset: string; decimals: number; native: boolean }>;
   /** SOL in the wallet, for gas. */
   gasLamports(): Promise<bigint>;
@@ -187,8 +192,8 @@ export async function runCreatorFeeTick(deps: CreatorFeeDeps): Promise<CreatorFe
   let claimedSig: string | null = null;
   let swappedSig: string | null = null;
 
-  // 1. Claim.
-  if ((await gateway.claimable()) >= deps.minClaim) {
+  // 1. Claim (skipped when the platform pays us directly).
+  if (!gateway.paidDirectly && (await gateway.claimable()) >= deps.minClaim) {
     const { signature, received } = await gateway.claim();
     claimedSig = signature;
     if (native) {

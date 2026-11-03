@@ -18,7 +18,7 @@ export default async function Coin() {
         <p className="docs-lede">The CardQuest coin. Every trade pays a creator fee, and that fee buys the graded cards hiding in the crates. More trading, fuller vault.</p>
         <div className="coin-actions">
           <div className="row-gap"><CaChip full /><XButton /></div>
-          {coinLive && <a className="btn btn-lg" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Buy on pump.fun</a>}
+          {coinLive && <a className="btn btn-lg" href={LINKS.buy} target="_blank" rel="noopener noreferrer">Buy {LINKS.ticker}</a>}
           <p className="faint small">Not financial advice. Nothing here promises any price or return.</p>
         </div>
       </section>

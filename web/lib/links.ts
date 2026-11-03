@@ -5,11 +5,12 @@ const COIN_ADDRESS = process.env.NEXT_PUBLIC_COIN_ADDRESS?.trim() || "COIN_ADDRE
 const PRIZE_WALLET = process.env.NEXT_PUBLIC_PRIZE_WALLET?.trim();
 
 export const LINKS = {
-  ticker: "$QUEST", // pump.fun ticker, shown across the site
+  ticker: "$QUEST", // coin ticker, shown across the site
   coin: COIN_ADDRESS,
   x: "https://x.com/cardquestsol",
   xHandle: "@cardquestsol",
-  pump: `https://pump.fun/coin/${COIN_ADDRESS}`,
+  // Where "Get the coin" goes. Defaults to a Jupiter swap into the coin (works for any Raydium coin); set NEXT_PUBLIC_BUY_URL to the Float coin page to send people there instead.
+  buy: process.env.NEXT_PUBLIC_BUY_URL?.trim() || `https://jup.ag/swap/SOL-${COIN_ADDRESS}`,
   collectorCrypt: "https://collectorcrypt.com",
   vault: PRIZE_WALLET ? `https://collectorcrypt.com/account/${PRIZE_WALLET}` : "https://collectorcrypt.com",
 };

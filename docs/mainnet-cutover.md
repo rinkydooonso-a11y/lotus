@@ -24,7 +24,15 @@ The order matters: money-moving pieces switch on last, and the confirmation phra
 - [ ] Add the real cards in `/admin` (mint, name, grade, value, location, cost).
 - [ ] Run any pending migrations (`cd server && DATABASE_URL=<session pooler> npm run migrate`) **before** deploying code that needs them.
 
-## 4. Fee sharing (pump.fun), one-time
+## 4. Fee routing (Float)
+
+- [ ] Launch the coin on Float. In "Who gets the fees?" choose **Other wallet** and paste the prize wallet's address (the one in `HOT_WALLET_SECRET_KEY`). Check the address twice; whether it can be changed later is not documented.
+- [ ] Pick the pairing token (CARDS or SOL) and the trading fee (1%, 2% or 2.5%; the creator gets 5% of it after Raydium's cut).
+- [ ] On the worker set `FLOAT_FEES=yes` and `FLOAT_PAIR_MINT` (CARDS: `CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp`; leave empty for SOL). Do not set `PUMP_COIN_MINT`, `ONE_WALLET_FEES` or `FEE_CLAIMER_SECRET_KEY`.
+- [ ] Set `NEXT_PUBLIC_COIN_ADDRESS` in Vercel (turns on the holder gate and buy button); optionally `NEXT_PUBLIC_BUY_URL` for the Float coin page.
+- [ ] Test with a tiny launch first and watch the first payout land and get swept (`fee-claimer` logs, a `prize_fund_entries` row).
+
+### Legacy: pump.fun fee sharing (not used)
 
 - [ ] Launch the coin on pump.fun. **Do not enable "Holder Rewards".**
 - [ ] Set fee sharing to **100% to the Squads vault**. This is a one-time, permanent setting (`update_fee_shares_v2` revokes the admin), so double-check the vault address first. The vault's quote-mint token account must exist (create it first).

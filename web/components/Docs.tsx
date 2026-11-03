@@ -31,7 +31,7 @@ export function TierRows({ right }: { right?: (t: Tier) => ReactNode }) {
 export function FeeFlow() {
   return (
     <ol className="flow">
-      <li className="flow-node"><b>Every {LINKS.ticker} trade</b><span>on pump.fun</span></li>
+      <li className="flow-node"><b>Every {LINKS.ticker} trade</b><span>on Float</span></li>
       <li className="flow-link"><span>creator fee</span></li>
       <li className="flow-node"><b>Treasury</b><span>swapped to USDC</span></li>
       <li className="flow-link" />

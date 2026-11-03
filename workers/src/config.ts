@@ -71,6 +71,14 @@ const EnvSchema = z.object({
    * fees (PUMP_COIN_MINT) and swaps them into SOL. 'yes' turns it on; no vault or Squads is involved.
    */
   ONE_WALLET_FEES: z.enum(['yes', 'no']).default('no'),
+  /**
+   * Float mode: the coin was launched on Float (Raydium LaunchLab) with HOT_WALLET_SECRET_KEY's address as the
+   * fee recipient. Float's bot pays the creator share into that wallet's token account for the paired token, so
+   * nothing is claimed; the worker only sweeps what lands there into SOL and credits the card fund.
+   */
+  FLOAT_FEES: z.enum(['yes', 'no']).default('no'),
+  /** Float mode: the token the coin is paired with (its fees are paid in it). Defaults to wrapped SOL; CARDS is CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp. */
+  FLOAT_PAIR_MINT: base58Address.default('So11111111111111111111111111111111111111112'),
   /** One-wallet mode: the card buyer spends the wallet's own SOL instead of drawing on a Squads spending limit. */
   ONE_WALLET_BUYER: z.enum(['yes', 'no']).default('no'),
   /** Slippage allowed when swapping claimed fee tokens into SOL. */
@@ -160,7 +168,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (Boolean(parsed.data.SQUADS_MULTISIG_ADDRESS) !== Boolean(parsed.data.SQUADS_PROPOSER_SECRET_KEY)) {
     throw new Error('Invalid worker environment:\n  set both SQUADS_MULTISIG_ADDRESS and SQUADS_PROPOSER_SECRET_KEY, or neither');
   }
-  if (parsed.data.ONE_WALLET_FEES === 'yes') {
+  if (parsed.data.FLOAT_FEES === 'yes') {
+    if (parsed.data.ONE_WALLET_FEES === 'yes' || parsed.data.PUMP_COIN_MINT || parsed.data.FEE_CLAIMER_SECRET_KEY) {
+      throw new Error('Invalid worker environment:\n  FLOAT_FEES replaces the pump.fun fee modes; unset ONE_WALLET_FEES, PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY');
+    }
+  } else if (parsed.data.ONE_WALLET_FEES === 'yes') {
     if (!parsed.data.PUMP_COIN_MINT) throw new Error('Invalid worker environment:\n  ONE_WALLET_FEES needs PUMP_COIN_MINT');
     if (parsed.data.FEE_CLAIMER_SECRET_KEY) {
       throw new Error('Invalid worker environment:\n  ONE_WALLET_FEES claims with HOT_WALLET_SECRET_KEY; unset FEE_CLAIMER_SECRET_KEY (vault mode)');

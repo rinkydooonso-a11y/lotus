@@ -463,7 +463,7 @@ export default function MapView() {
           )}
           {near && hold && needsCoin && !hold.lockedOut ? (
             // Nothing to tap for an open here, so the button becomes the way to fix it.
-            <a className="btn btn-lg wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}<IconArrowUpRight size={16} /></a>
+            <a className="btn btn-lg wide" href={LINKS.buy} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}<IconArrowUpRight size={16} /></a>
           ) : (
             <button className={near && canOpen && !needsCoin ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening || !canOpen || needsCoin} onClick={() => void open()}>
               {opening ? "Opening…"

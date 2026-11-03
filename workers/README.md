@@ -106,7 +106,11 @@ The program enforces the cap, so a leaked hot-wallet key loses at most a week's 
 - `PRIZE_COLLECTIONS` needs Collector Crypt's collection addresses.
 - `SQUADS_VAULT_ADDRESS` (optional) is the Squads vault address, read only. With it, inventory sync also checks the cards stored in the vault.
 
-## One-wallet mode (fees + cards on one wallet)
+## Float mode (`FLOAT_FEES=yes`, the live fee path)
+
+The coin is launched on Float (Raydium LaunchLab) and the prize wallet is chosen as the fee recipient at launch ("Who gets the fees?" > Other wallet). Float's payout bot calls its `ClaimDevFees` instruction, which moves the creator share (5% of the trading fee after Raydium's cut) into the wallet's associated token account for the paired token. Nothing is claimed by us (checked on mainnet transactions of the Float program). Each run the worker sweeps what has landed: wrapped SOL is unwrapped through a throwaway token account (the real WSOL account stays open so Float can keep paying into it), any other paired token (e.g. CARDS) is swapped to SOL through Jupiter with the same instruction checks, simulation and `FEE_SWAP_MAX_IMPACT_BPS` limit as one-wallet mode. `FEE_CARD_FUND_BPS` of the SOL value goes to the card fund, keyed by the sweep signature. `FLOAT_PAIR_MINT` is the paired token (default wrapped SOL). Do not set it together with `ONE_WALLET_FEES`, `PUMP_COIN_MINT` or `FEE_CLAIMER_SECRET_KEY`. The unwrap transaction layout was simulated read-only against a real Float creator wallet on mainnet; a first real payout has not been swept yet, so watch the first one.
+
+## One-wallet mode, pump.fun (legacy: fees + cards on one wallet)
 
 Off by default. `ONE_WALLET_FEES=yes` (needs `PUMP_COIN_MINT`; do not set `FEE_CLAIMER_SECRET_KEY`) makes `HOT_WALLET_SECRET_KEY` claim its own creator fees. The coin must have been launched from that wallet, and the gateway refuses to start if its creator is someone else. Each run: claim what is waiting (at least `FEE_CLAIM_MIN_BASE_UNITS`), then swap whatever fee token the wallet holds into SOL (`swapToSol`: Jupiter exact-in, instructions checked, simulated, refused above `FEE_SWAP_MAX_IMPACT_BPS` of quoted impact), and credit `FEE_CARD_FUND_BPS` of the SOL received to the card fund, keyed by the swap signature so a retry can't double count. A claim is logged as a `claim` treasury event and a swap as an `other` one. Run `npx tsx scripts/swap-quote.ts <mint> <amount>` first to see whether the token has a route. Anything sent to this wallet in the fee token is swapped and credited the same way.
 
