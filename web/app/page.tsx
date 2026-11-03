@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
+import { HeroCrate } from "@/components/HeroCrate";
 import { HeroCopy } from "@/components/HomePanels";
 import { PullTicker, useFeed } from "@/components/PullsFeed";
 import { useScrollLock } from "@/components/Portal";
@@ -26,6 +27,7 @@ export default function Home() {
     <div className={full ? "home full" : "home"}>
       <section className="hero">
         <MapView />
+        {!full && <HeroCrate feed={feed} />}
         {!full && <HeroCopy />}
         {!full && <PullTicker feed={feed} />}
       </section>

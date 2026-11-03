@@ -14,6 +14,7 @@ import { LINKS } from "@/lib/links";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { inWalletBrowser, isMobileUA } from "@/lib/auth/phantomDeeplink";
 import { QrCard } from "./QrCard";
+import { ConnectButton } from "./HomePanels";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconArrowUpRight, IconClose, IconCoin, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
 
@@ -84,7 +85,7 @@ const RING = 2 * Math.PI * 25;
 interface Fix { lat: number; lng: number; acc: number }
 
 export default function MapView() {
-  const { user, balances, setBalances } = useAuth();
+  const { user, balances, setBalances, loading } = useAuth();
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const me = useRef<maplibregl.Marker | null>(null);
@@ -128,7 +129,7 @@ export default function MapView() {
     });
     m.on("style.load", () => {
       if (!flat) m.setProjection({ type: "globe" });
-      if (!flat) m.setSky({ "sky-color": "#000000", "horizon-color": "#3b1f78", "fog-color": "#000000", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
+      if (!flat) m.setSky({ "sky-color": "#000000", "horizon-color": "#1c3f86", "fog-color": "#000000", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
       addCityLayers(m);
       // Labels laid flat on the ground smear into tall blurry strips at the 55° street-level tilt (and on the globe),
       // so keep point labels upright facing the screen; road names still follow their roads.
@@ -385,6 +386,17 @@ export default function MapView() {
           </div>
         )}
       </div>
+      {(full || zoomedIn) && (
+        <div className="map-legend" aria-label="Map legend">
+          <p className="legend-city"><span className="legend-dot city" />{city}</p>
+          <p><span className="legend-dot crate" />Crate available</p>
+          <p><span className="legend-dot ticket" />Ticket crate</p>
+          <p><span className="legend-dot you" />You</p>
+        </div>
+      )}
+      {exploring && !user && !loading && (
+        <div className="map-card"><p className="map-card-line">Connect a wallet to see crates near you and open them.</p><ConnectButton className="btn wide" /></div>
+      )}
       {exploring && <button className="map-close" onClick={() => setExploring(false)} aria-label="Close the map"><IconClose size={16} />Close map</button>}
       {/* Tickets are spent by opening, not by a button: the next open after the free one uses one. */}
       {balances && balances.tickets > 0 && <div className="ticket-fab" role="status"><Ticket size={18} />{balances.tickets} extra {balances.tickets === 1 ? "open" : "opens"}</div>}

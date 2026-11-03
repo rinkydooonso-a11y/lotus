@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LINKS } from "@/lib/links";
+import { setExploring } from "@/lib/viewStore";
 
 /** Open off-site links in a new tab. */
 export const ext = (href: string) => (href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {});
@@ -14,8 +15,14 @@ export const NAV = [
   { href: "/stats", label: "Live stats" },
 ];
 
-/** Inline links for the desktop header. */
+/** Inline links for the desktop header: the three things a visitor looks for first. */
 export function NavLinks() {
   const path = usePathname();
-  return <>{NAV.map((t) => <Link key={t.href} href={t.href} {...ext(t.href)} className={path === t.href ? "on" : ""}>{t.label}</Link>)}</>;
+  return (
+    <>
+      <Link href="/" onClick={() => setExploring(true)} className={path === "/" ? "on" : ""}>Explore</Link>
+      <Link href="/history" className={path === "/history" ? "on" : ""}>Prizes</Link>
+      <Link href="/how" className={path === "/how" ? "on" : ""}>How it works</Link>
+    </>
+  );
 }

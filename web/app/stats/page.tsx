@@ -29,7 +29,7 @@ export default async function Stats() {
 
       <section><h2>What&apos;s in the crates</h2>
         <p>{n(vault.cardsInVault)} cards worth {usd(vault.totalValueUsd)} are in the vault right now.</p>
-        <TierRows right={(t) => <span className="tier-count"><b>{vault.byTier[t].count}</b> in vault · {(vault.byTier[t].odds * 100).toFixed(2)}%</span>} />
+        <TierRows right={(t) => <span className="tier-count"><b>{vault.byTier[t].count}</b> in vault</span>} />
       </section>
 
       <section><h2>Where the money goes</h2><FeeFlow /></section>
