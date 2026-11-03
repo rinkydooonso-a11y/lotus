@@ -21,7 +21,7 @@ export default function Terms() {
       <h2>Prizes</h2>
       <ul>
         <li>Card prizes are NFTs of graded physical cards. You can keep, trade or redeem them with the card custodian under their own terms.</li>
-        <li>We only award cards that are in stock. Odds are public on the Vault page and change as stock changes. If a tier has no stock, its share moves to shards.</li>
+        <li>We only award cards that are in stock. If a tier has no stock, it pays shards instead.</li>
         <li>A prize is sent to the wallet you connected when you won. We cannot send to a different address afterwards. If a send fails we retry, but we cannot recover a prize sent to a wallet you do not control.</li>
         <li>Prizes have no guaranteed value. Card values change.</li>
       </ul>

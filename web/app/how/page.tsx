@@ -28,7 +28,7 @@ const rules = [
 const faq = [
   ["Is it free to play?", coinLive ? `Opening crates costs nothing, but you need to hold $${COIN_HOLD_USD} of ${LINKS.ticker} in your wallet to open them. We check when you open, and the amount is fixed for 48 hours once you qualify. If you drop below it in that window, opening pauses until the window ends.` : "Yes. Connecting a wallet and opening crates costs nothing."],
   ["Are the cards real?", "Yes. Each prize is a Collector Crypt NFT backed by a professionally graded physical card held in a vault. Keep it, sell it, or redeem it on Collector Crypt to have the card shipped."],
-  ["What are shards and tickets?", `Crates without a card pay 1 to 3 shards. ${SHARDS_PER_TICKET} shards make a ticket, up to ${MAX_TICKETS}. Spending a ticket buys another open the same day, at much better odds.`],
+  ["What are shards and tickets?", `Crates without a card pay 1 to 3 shards. ${SHARDS_PER_TICKET} shards make a ticket, up to ${MAX_TICKETS}. Spending a ticket buys another open the same day.`],
   ["Why can't I see crates?", `Crates are only placed inside the ${SERVICE_CITIES.length} launch cities right now, and one near you may already have been opened. More cities open as the vault grows.`],
   ["Is CardQuest affiliated with Collector Crypt?", "No. We buy cards like any customer. Redemption and shipping happen on their site."],
 ];
@@ -74,7 +74,7 @@ export default function How() {
       <section id="fair"><h2>Fair by design</h2>
         <ol className="timeline">
           <li><span className="tl-dot" /><div><b>You open a crate</b><p>Your phone sends where you are. The server checks you&apos;re really there.</p></div></li>
-          <li><span className="tl-dot accent" /><div><b>The server rolls</b><p>Odds are public on the vault page, and we never award a card the vault doesn&apos;t hold.</p></div></li>
+          <li><span className="tl-dot accent" /><div><b>The server rolls</b><p>The vault is public, and we never award a card the vault doesn&apos;t hold.</p></div></li>
           <li><span className="tl-dot done" /><div><b>The card is sent</b><p>It moves on-chain to your wallet, usually within a minute.</p></div></li>
         </ol>
       </section>

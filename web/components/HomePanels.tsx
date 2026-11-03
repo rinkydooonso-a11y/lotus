@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
 import { setCity } from "@/lib/cityStore";
+import { setExploring } from "@/lib/viewStore";
 import { usd } from "@/lib/format";
 import { COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
 import { LINKS, coinLive } from "@/lib/links";
@@ -23,7 +24,7 @@ export function WatchButton({ label = "Watch the film", className = "btn btn-lg 
   return <button className={className} onClick={openFilm}><IconPlay size={15} />{label}</button>;
 }
 
-function ConnectButton({ className = "btn btn-lg" }: { className?: string }) {
+export function ConnectButton({ className = "btn btn-lg" }: { className?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -35,7 +36,7 @@ function ConnectButton({ className = "btn btn-lg" }: { className?: string }) {
 
 /** The pitch over the globe: one line of status, the headline, one sentence, two buttons. */
 export function HeroCopy() {
-  const { user, balances, loading } = useAuth();
+  const { user, balances } = useAuth();
   const walletBrowser = useInWalletBrowser();
   const asked = useRef(false);
   useEffect(() => {
@@ -46,20 +47,21 @@ export function HeroCopy() {
   return (
     <div className="hero-copy">
       <p className="hero-live"><span className="live-dot" />Live in {SERVICE_CITIES.length} cities</p>
-      <h1 className="hero-title">Graded cards are dropping in <CitySwap /></h1>
-      <p className="hero-lede">Crates are hidden on the streets of twelve cities. Find one before anybody else does, open it on your phone, and a real graded card could be yours.</p>
+      <h1 className="hero-title">Your next grail is hiding in <CitySwap />.</h1>
+      <p className="hero-lede">CardQuest hides crates on real streets in {SERVICE_CITIES.length} cities. Walk to one, open it on your phone, and you could win a real graded card, sent straight to your wallet.</p>
       {walletBrowser && !user ? <WalletBrowserNotice /> : (
         <div className="hero-actions">
-          {!loading && !user && <ConnectButton />}
+          <button className="btn btn-lg" onClick={() => setExploring(true)}>Explore the map</button>
           {user && balances && (
             <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
               <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ {balances.shardsPerTicket} shards</small></span>
               <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ {MAX_TICKETS} tickets</small></span>
             </Link>
           )}
-          <WatchButton label="How it works" />
+          <Link href="/how" className="btn btn-lg btn-gray">How it works</Link>
         </div>
       )}
+      <p className="hero-trust">Every prize is a professionally graded card from a public vault. Win one and redeem it for the physical card, or sell it, on Collector Crypt.</p>
       <div className="hero-qr hide-phone"><QrCard className="qr-card" /></div>
     </div>
   );

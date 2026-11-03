@@ -20,9 +20,9 @@ export default async function Vault() {
         <div className="stat-card"><span className="eyebrow">Insured value</span><b>{usd(v.totalValueUsd)}</b></div>
         <div className="stat-card"><span className="eyebrow">Cards sent</span><b>{v.cardsSent}</b></div>
       </div>
-      <section><h2>Tiers and odds</h2>
-        <p>Odds are per standard crate, before availability: a tier with no cards in the vault pays shards instead.</p>
-        <TierRows right={(t) => <span className="tier-count"><b>{(v.byTier[t].odds * 100).toFixed(2)}%</b> · {v.byTier[t].count} in vault</span>} />
+      <section><h2>What's in the vault</h2>
+        <p>A tier with no cards in the vault pays shards instead, so we never award a card we don't hold.</p>
+        <TierRows right={(t) => <span className="tier-count"><b>{v.byTier[t].count}</b> in vault</span>} />
       </section>
       <section><h2>Treasury activity</h2>
         {v.recentTreasury.length === 0 ? <p>Nothing yet.</p> : (

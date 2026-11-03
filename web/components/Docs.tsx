@@ -62,7 +62,7 @@ export function SiteFooter() {
           </nav>
           <nav aria-label="Transparency">
             <h3>Transparency</h3>
-            <Link href="/vault">The vault and odds</Link><Link href="/stats">Live stats</Link><Link href="/coin">Where the money goes</Link>
+            <Link href="/vault">The vault</Link><Link href="/stats">Live stats</Link><Link href="/coin">Where the money goes</Link>
           </nav>
           <nav aria-label="Cards">
             <h3>Your cards</h3>
