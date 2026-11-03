@@ -74,7 +74,7 @@ export function SiteFooter() {
             <Link href="/terms">Terms of Play</Link><Link href="/privacy">Privacy</Link><Link href="/safe-play">Safe play</Link>
           </nav>
         </div>
-        <p className="sf-fine">CardQuest is an independent game and is not affiliated with Collector Crypt. Prizes depend on available inventory. Nothing here is financial advice or a promise of returns. Play where it is safe and legal, and watch your surroundings. 18+.</p>
+        <p className="sf-fine">CardQuest is an independent game and is not affiliated with Collector Crypt. Prizes depend on available inventory. Nothing here is financial advice or a promise of returns. Play where it is safe and legal, and watch your surroundings. 18+. Map data © OpenStreetMap contributors, © OpenMapTiles, hosted by OpenFreeMap.</p>
       </div>
     </footer>
   );

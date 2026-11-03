@@ -48,7 +48,7 @@ function Stage({ stage, p }: { stage: string; p: number }) {
     case "card":
       return <div className="fs fs-card"><div className="fan"><div className="back l"><CardThumb tier="common" grade="PSA 9" size="lg" /></div><div className="back r"><CardThumb tier="uncommon" grade="CGC 9" size="lg" /></div><div className="front"><CardThumb tier="rare" grade="PSA 10" size="lg" /></div></div><b className="fs-price tc-rare">$280</b><span className="tag">PSA GEM MINT 10</span></div>;
     case "tiers":
-      return <div className="fs fs-tiers">{([["grail", "Grail", "$300+", 3], ["rare", "Rare", "$75–$300", 9], ["uncommon", "Uncommon", "$30–$75", 24], ["common", "Common", "Under $30", 61]] as const).map(([k, n, r, c], i) => <div key={k} className={`fs-tier t-${k}`} style={{ animationDelay: `${i * 0.12}s` }}><b className={`tc-${k}`}>{n}</b><small>{r}</small><span>{c}</span></div>)}</div>;
+      return <div className="fs fs-tiers">{([["grail", "Grail", "$300+", 3], ["rare", "Rare", "$75–$300", 9], ["uncommon", "Uncommon", "$30–$75", 24], ["common", "Common", "Under $30", 61]] as const).map(([k, n, r, c], i) => <div key={k} className={`fs-tier t-${k}`} style={{ animationDelay: `${i * 0.12}s` }}><b className={`tc-${k}`}>{n}</b><small>{r}</small></div>)}</div>;
     case "wallet":
       return <div className="fs fs-wallet"><CardThumb tier="grail" grade="PSA 10" size="lg" /><span className="fs-arrow" style={{ opacity: Math.min(1, p * 2) }}><IconChevronRight size={40} strokeWidth={2.2} /></span><div className="fs-walletbox" style={{ opacity: Math.min(1, p * 2) }}><b>Your wallet</b><span>Received 1 NFT</span></div></div>;
     case "flow":
@@ -123,7 +123,8 @@ export function FilmHost() {
   return (
     <div className="reel" role="dialog" aria-modal="true" aria-label="How CardQuest works">
       <div className="reel-map" ref={mapEl} aria-hidden="true" />
-      <div className="reel-veil" style={{ opacity: c.map ? 0.45 : 0.94 }} />
+      <div className="reel-grid" style={{ opacity: c.map ? 0 : 1 }} aria-hidden="true"><i /></div>
+      <div className="reel-veil" style={{ opacity: c.map ? 0.45 : 0.6 }} />
       <div className="reel-stage" key={`s${ch}`}><Stage stage={c.stage} p={p} /></div>
       <div className="reel-top">
         <div className="reel-chapters">{CHAPTERS.map((x, i) => <button key={x.name} onClick={() => go(i)} aria-label={`Chapter ${i + 1}: ${x.name}`}><i style={{ transform: `scaleX(${Math.max(0, Math.min(1, (t - i * CH_MS) / CH_MS))})` }} /></button>)}</div>
@@ -140,12 +141,7 @@ export function FilmHost() {
         <button className="reel-btn" onClick={() => go(ch + 1)} aria-label="Next chapter"><IconChevronRight size={18} strokeWidth={2.2} /></button>
         <span className="reel-where"><b>{c.name}</b><small>{ch + 1} / {CHAPTERS.length}</small></span>
       </div>
-      {/* The film's map has MapLibre's own credit turned off, so the style's required credit is shown here. */}
-      <p className="reel-credit">
-        <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>{" "}
-        <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>{" "}
-        Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
-      </p>
+
     </div>
   );
 }
