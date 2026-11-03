@@ -646,9 +646,9 @@ html:has(.home:not(.full)){overflow:hidden}
   .home:not(.full) .mapwrap{bottom:46%}
 }
 .tagline{display:flex;align-items:center;margin:0 0 20px;color:var(--text-2);font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
-.hero-copy{position:absolute;z-index:2;left:clamp(var(--gutter),8.3vw,160px);top:auto;bottom:clamp(28px,6vh,64px);width:min(720px,54vw);display:flex;flex-direction:column;justify-content:flex-end;animation:rise .8s var(--ease) both}
+.hero-copy{position:absolute;z-index:2;left:clamp(var(--gutter),8.3vw,160px);top:0;bottom:0;width:min(720px,54vw);display:flex;flex-direction:column;justify-content:center;padding:24px 0;animation:rise .8s var(--ease) both}
 .hero-copy{pointer-events:none}.hero-copy .hero-qr,.hero-copy .hero-actions,.hero-copy .notice{pointer-events:auto}
-.hero-title{font:800 clamp(34px,min(5.1vw,8.8vh),88px)/.98 var(--display);letter-spacing:-.035em;text-transform:uppercase;margin:0 0 clamp(16px,3vh,30px)}
+.hero-title{font:800 clamp(34px,min(4.7vw,8.2vh),84px)/.98 var(--display);letter-spacing:-.035em;text-transform:uppercase;margin:0 0 clamp(16px,3vh,30px)}
 .hero-title em{font-style:normal;color:var(--volt)}
 .hero-lede{max-width:460px;margin:0 0 clamp(18px,4vh,36px);color:var(--text-2);font-size:18px;line-height:1.5}
 .hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
