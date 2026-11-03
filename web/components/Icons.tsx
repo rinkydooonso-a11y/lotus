@@ -25,14 +25,14 @@ export const IconAlert = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8.5" /
 export const IconCoin = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.6" /><path d="M12 9.6v4.8" /></Svg>;
 export const IconX = ({ size = 15, ...p }: P) => <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...p}><path fill="currentColor" d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.77L17.75 3Zm-1.08 16.2h1.7L7.4 4.7H5.58l11.09 14.5Z" /></svg>;
 
-/** Shard: a faceted purple gem. */
+/** Shard: a faceted blue gem. */
 export function Shard({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className="gem">
-      <path d="M12 2.5 20 9l-8 12.5L4 9z" fill="#d4ff2a" />
-      <path d="M12 2.5 20 9h-8z" fill="#f4f1ea" />
-      <path d="M12 2.5 4 9h8z" fill="#a983ff" />
-      <path d="M4 9h8v12.5z" fill="#6d35e0" />
+      <path d="M12 2.5 20 9l-8 12.5L4 9z" fill="#34cde3" />
+      <path d="M12 2.5 20 9h-8z" fill="#a6eef8" />
+      <path d="M12 2.5 4 9h8z" fill="#6ed8ea" />
+      <path d="M4 9h8v12.5z" fill="#1d8fa3" />
     </svg>
   );
 }
@@ -49,14 +49,14 @@ export function Ticket({ size = 16 }: { size?: number }) {
 
 /** Isometric crate glyph, in purple or (ticket crates) gold. */
 export function CrateGlyph({ size = 32, gold = false }: { size?: number; gold?: boolean }) {
-  const [lid, l, r] = gold ? ["#ffe08f", "#e0a92d", "#a8771a"] : ["#f4f1ea", "#d4ff2a", "#8aa81a"];
+  const [lid, l, r] = gold ? ["#ffe08f", "#e0a92d", "#a8771a"] : ["#ff7c01", "#34cde3", "#1d8fa3"];
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
       <path d="M24 4 43 14.5 24 25 5 14.5z" fill={lid} />
       <path d="M5 14.5 24 25v19L5 33.5z" fill={l} />
       <path d="M43 14.5 24 25v19l19-10.5z" fill={r} />
-      <path d="M14 9.3 33 19.8v4.4L14 13.7z" fill="#0a0a0b" />
-      <path d="M22.6 24.2 24 25l1.4-.8v19l-1.4.8-1.4-.8z" fill="#0a0a0b" />
+      <path d="M14 9.3 33 19.8v4.4L14 13.7z" fill="#121212" />
+      <path d="M22.6 24.2 24 25l1.4-.8v19l-1.4.8-1.4-.8z" fill="#121212" />
     </svg>
   );
 }

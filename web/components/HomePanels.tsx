@@ -12,7 +12,7 @@ import { LINKS, coinLive } from "@/lib/links";
 import type { Feed, VaultStats } from "@/lib/types";
 import { ConnectSheet } from "./ConnectSheet";
 import { openFilm } from "./Film";
-import { CrateGlyph, IconArrowUpRight, IconPlay, Shard, Ticket } from "./Icons";
+import { IconArrowUpRight, IconPlay, Shard, Ticket } from "./Icons";
 import { QrCard } from "./QrCard";
 import { PullsShowcase } from "./PullsFeed";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
@@ -31,22 +31,8 @@ export function ConnectButton({ className = "btn btn-lg", label = "Connect walle
   );
 }
 
-/** A CardQuest-branded sample card in a slab. Art only: the real prizes show up in the live pulls below. */
-function BrandSlab({ n, tone, className = "" }: { n: string; tone: "pink" | "lime" | "ice"; className?: string }) {
-  return (
-    <div className={`bslab ${tone} ${className}`} aria-hidden="true">
-      <div className="bslab-label"><span>CARDQUEST</span><b>{n}</b></div>
-      <div className="bslab-art">
-        <span className="bslab-cq">CQ</span>
-        <span className="bslab-crate"><CrateGlyph size={54} /></span>
-        <span className="bslab-foil" />
-      </div>
-    </div>
-  );
-}
-
 /** The opening screen: one loud headline, one action (a QR on desktop, since crates only open on a phone), and a tile of art. */
-export function Hero() {
+export function Hero({ map }: { map: React.ReactNode }) {
   const { user, balances } = useAuth();
   const walletBrowser = useInWalletBrowser();
   const n = SERVICE_CITIES.length;
@@ -60,27 +46,18 @@ export function Hero() {
           {walletBrowser && !user ? <WalletBrowserNotice /> : (
             <div className="hero2-actions">
               {!user && <ConnectButton className="btn btn-lg show-phone" label="Connect wallet to play" />}
-              <button className={user ? "btn btn-lg show-phone" : "btn btn-lg btn-gray show-phone"} onClick={() => setExploring(true)}>See the map</button>
               {user && balances && (
                 <Link href="/history" className="hero-bal" aria-label="Your shards and tickets">
                   <span><Shard size={18} /><b className="num">{balances.shards}</b><small>/ {balances.shardsPerTicket} shards</small></span>
                   <span><Ticket size={18} /><b className="num">{balances.tickets}</b></span>
                 </Link>
               )}
-              <Link href="/how" className="btn btn-lg btn-gray hide-phone">How it works</Link>
+              <Link href="/how" className="btn btn-lg btn-gray">How it works</Link>
             </div>
           )}
           <div className="hero2-qr hide-phone"><QrCard className="qr-card" /></div>
         </div>
-        <div className="hero2-art" aria-hidden="true">
-          <div className="tile-map" />
-          <div className="ring40"><span>{OPEN_RADIUS_M} m</span></div>
-          <BrandSlab n="01" tone="pink" className="s-left" />
-          <BrandSlab n="02" tone="ice" className="s-right" />
-          <BrandSlab n="03" tone="lime" className="s-mid" />
-          <div className="hero2-crate"><CrateGlyph size={92} /></div>
-          <span className="sticker">{n} cities<br />live now</span>
-        </div>
+        <div className="hero2-map">{map}</div>
       </div>
     </section>
   );
@@ -152,7 +129,7 @@ export function GlobeHead() {
         <p className="eyebrow">Where it&apos;s live</p>
         <h2 className="big-h">{SERVICE_CITIES.length} cities.<br />One map.</h2>
         <p className="sec-sub">Crates only open on a phone, standing next to them. More cities open as the vault grows.</p>
-        <button className="btn btn-lg" onClick={() => setExploring(true)}>Open the map</button>
+        <button className="btn btn-lg" onClick={() => setExploring(true)}>Explore the map full screen</button>
       </div>
       <ul className="city-grid" aria-label="Launch cities">
         {SERVICE_CITIES.map((c, i) => (

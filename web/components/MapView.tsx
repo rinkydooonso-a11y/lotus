@@ -72,8 +72,8 @@ function addCityLayers(m: maplibregl.Map) {
     type: "geojson",
     data: { type: "FeatureCollection", features: SERVICE_CITIES.map((c) => ({ type: "Feature", properties: { name: c.name }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) },
   });
-  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 6, 30], "circle-color": "#d4ff2a", "circle-opacity": 0.35, "circle-blur": 1 } });
-  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#d4ff2a", "circle-stroke-width": 2.5 } });
+  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 6, 30], "circle-color": "#ff7c01", "circle-opacity": 0.35, "circle-blur": 1 } });
+  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#ff7c01", "circle-stroke-width": 2.5 } });
   if (!m.getStyle().glyphs) return;
   m.addLayer({
     id: "cities-label", type: "symbol", source: "cities", minzoom: 1.2, maxzoom: 10,
@@ -144,7 +144,7 @@ export default function MapView() {
     });
     m.on("style.load", () => {
       if (!flat) m.setProjection({ type: "globe" });
-      if (!flat) m.setSky({ "sky-color": "#0a0a0b", "horizon-color": "#3c4a0c", "fog-color": "#0a0a0b", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
+      if (!flat) m.setSky({ "sky-color": "#121212", "horizon-color": "#1f5a66", "fog-color": "#121212", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
       styleBase(m);
       addCityLayers(m);
       // Labels laid flat on the ground smear into tall blurry strips at the 55° street-level tilt (and on the globe),
@@ -301,8 +301,8 @@ export default function MapView() {
     const paint = () => {
       if (!m.getLayer("cities-dot")) return;
       const isSel = ["==", ["get", "name"], city] as maplibregl.ExpressionSpecification;
-      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#d4ff2a", "#ffffff"]);
-      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#d4ff2a"]);
+      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#ff7c01", "#ffffff"]);
+      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#ff7c01"]);
       m.setPaintProperty("cities-dot", "circle-radius", ["interpolate", ["linear"], ["zoom"], 0, ["case", isSel, 5.5, 3.5], 6, ["case", isSel, 9, 6]]);
       m.setPaintProperty("cities-glow", "circle-opacity", ["case", isSel, 0.7, 0.3]);
     };
