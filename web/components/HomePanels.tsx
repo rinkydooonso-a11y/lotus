@@ -44,9 +44,8 @@ export function HeroCopy() {
   }, []);
   return (
     <div className="hero-copy">
-      <p className="tagline"><span className="live-dot" />Live in {SERVICE_CITIES.length} cities</p>
-      <h1 className="hero-title">Find the crate.<br /><em>Pull the card.</em></h1>
-      <p className="hero-lede">Graded trading cards are hidden in crates on real streets. Walk up to one with your phone, open it, and the card goes straight to your wallet.</p>
+      <h1 className="hero-title">Real cards.<br /><em>Hidden in<br />the street.</em></h1>
+      <p className="hero-lede">Crates of graded trading cards are dropped on real streets. Walk to one, open it, and the card goes straight to your wallet.</p>
       {walletBrowser && !user ? <WalletBrowserNotice /> : (
         <div className="hero-actions">
           {!user && <ConnectButton className="btn btn-lg show-phone" label="Connect wallet to play" />}
