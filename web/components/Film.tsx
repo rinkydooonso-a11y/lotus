@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { cityByName, useCity } from "@/lib/cityStore";
-import { Mark } from "./Logo";
+import { CrateMark } from "./Logo";
 import { QrCard } from "./QrCard";
 import { CardThumb } from "./CardThumb";
 import { IconChevronLeft, IconChevronRight, IconClose, IconPause, IconPlay, IconReplay } from "./Icons";
@@ -32,7 +32,7 @@ function Words({ text }: { text: string }) {
 }
 
 function Cube({ gold }: { gold?: boolean }) {
-  return <span className={gold ? "crate ticket film-crate" : "crate film-crate"}><span className="crate-ring" /><span className="crate-body"><Mark size={40} /></span></span>;
+  return <span className={gold ? "crate ticket film-crate" : "crate film-crate"}><span className="crate-ring" /><span className="crate-body"><CrateMark size={64} gold={gold} /></span></span>;
 }
 
 function Stage({ stage, p }: { stage: string; p: number }) {
@@ -44,7 +44,7 @@ function Stage({ stage, p }: { stage: string; p: number }) {
       return <div className="fs fs-walk"><span className="fs-at" style={{ left: "64%", top: "38%" }}><Cube /></span><span className={m <= 40 ? "fs-tag in" : "fs-tag"} style={{ left: "64%", top: "30%" }}>{m <= 40 ? "In reach" : `${m} m`}</span><span className="fs-you" style={{ left: `${30 + 30 * Math.min(1, p * 1.4)}%`, top: `${70 - 26 * Math.min(1, p * 1.4)}%` }} /></div>;
     }
     case "burst":
-      return <div className="fs fs-burst"><span className="fs-glow" /><span className="fs-big"><Mark size={120} /></span></div>;
+      return <div className="fs fs-burst"><span className="fs-glow" /><span className="fs-big"><CrateMark size={220} /></span></div>;
     case "card":
       return <div className="fs fs-card"><div className="fan"><div className="back l"><CardThumb tier="common" grade="PSA 9" size="lg" /></div><div className="back r"><CardThumb tier="uncommon" grade="CGC 9" size="lg" /></div><div className="front"><CardThumb tier="rare" grade="PSA 10" size="lg" /></div></div><b className="fs-price tc-rare">$280</b><span className="tag">PSA GEM MINT 10</span></div>;
     case "tiers":
