@@ -21,6 +21,7 @@ import { runTopUpTick } from './topUp.js';
 import { runCreatorFeeTick, runFeeClaimTick } from './feeClaimer.js';
 import { createPumpFeeGateway } from './pumpFees.js';
 import { createCreatorFeeGateway } from './creatorFees.js';
+import { createFloatFeeGateway } from './floatFees.js';
 import { runBuyTick } from './cardBuyer.js';
 import { createBuyerGateway } from './buyerGateway.js';
 import { jupiterSolUsd } from './magicEden.js';
@@ -228,24 +229,25 @@ async function main() {
     }, controller.signal));
   }
 
-  const oneWalletFees = config.ONE_WALLET_FEES === 'yes';
+  const floatFees = config.FLOAT_FEES === 'yes';
+  const oneWalletFees = config.ONE_WALLET_FEES === 'yes' || floatFees;
   const feesOn = oneWalletFees || Boolean(config.PUMP_COIN_MINT && config.FEE_CLAIMER_SECRET_KEY);
-  if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY (or ONE_WALLET_FEES=yes)');
+  if (mode === 'fee-claimer' && !feesOn) throw new Error('fee-claimer needs FLOAT_FEES=yes (or PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY, or ONE_WALLET_FEES=yes)');
   if (mode === 'all' && !feesOn) log.info('fee claimer disabled: PUMP_COIN_MINT / FEE_CLAIMER_SECRET_KEY not set');
   if ((mode === 'all' || mode === 'fee-claimer') && oneWalletFees) {
     let deps: Parameters<typeof runCreatorFeeTick>[0] | null = null;
     loops.push(loop('fee-claimer', config.FEE_CLAIM_INTERVAL_MS, async () => {
       if (!deps) {
-        const gateway = await createCreatorFeeGateway({
-          rpcUrl: config.SOLANA_RPC_URL,
-          coinMint: config.PUMP_COIN_MINT!,
-          wallet: Keypair.fromSecretKey(parseSecretKey(config.HOT_WALLET_SECRET_KEY)),
-          allowMainnet: config.LOTUS_ALLOW_MAINNET,
+        const wallet = Keypair.fromSecretKey(parseSecretKey(config.HOT_WALLET_SECRET_KEY));
+        const swapOpts = {
           priorityFeeMicroLamports: config.PRIORITY_FEE_MICROLAMPORTS,
           buildSwapIn: createJupiterSwapToSol({ slippageBps: config.FEE_SWAP_SLIPPAGE_BPS }),
           maxPriceImpact: config.FEE_SWAP_MAX_IMPACT_BPS / 10_000,
-        });
-        log.info('fee claimer on (one wallet)', { coin: config.PUMP_COIN_MINT });
+        };
+        const gateway = floatFees
+          ? await createFloatFeeGateway({ rpcUrl: config.SOLANA_RPC_URL, pairMint: config.FLOAT_PAIR_MINT, wallet, allowMainnet: config.LOTUS_ALLOW_MAINNET, ...swapOpts })
+          : await createCreatorFeeGateway({ rpcUrl: config.SOLANA_RPC_URL, coinMint: config.PUMP_COIN_MINT!, wallet, allowMainnet: config.LOTUS_ALLOW_MAINNET, ...swapOpts });
+        log.info(floatFees ? 'fee sweeper on (Float, one wallet)' : 'fee claimer on (one wallet)', floatFees ? { pair: config.FLOAT_PAIR_MINT } : { coin: config.PUMP_COIN_MINT });
         deps = {
           gateway,
           claims: new PgClaimLog(db),

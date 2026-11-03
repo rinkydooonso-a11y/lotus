@@ -52,7 +52,7 @@ function Stage({ stage, p }: { stage: string; p: number }) {
     case "wallet":
       return <div className="fs fs-wallet"><CardThumb tier="grail" grade="PSA 10" size="lg" /><span className="fs-arrow" style={{ opacity: Math.min(1, p * 2) }}><IconChevronRight size={40} strokeWidth={2.2} /></span><div className="fs-walletbox" style={{ opacity: Math.min(1, p * 2) }}><b>Your wallet</b><span>Received 1 NFT</span></div></div>;
     case "flow":
-      return <div className="fs fs-flow"><div className="flow-node"><b>Every {LINKS.ticker} trade</b><span>on pump.fun</span></div><span className="fs-dots" /><div className="flow-tag">creator fee</div><span className="fs-dots" /><div className="flow-node"><b>Treasury</b><span>swapped to USDC</span></div><span className="fs-dots" /><div className="flow-node vault"><b>The vault</b><span>fills the crates</span></div></div>;
+      return <div className="fs fs-flow"><div className="flow-node"><b>Every {LINKS.ticker} trade</b><span>on Float</span></div><span className="fs-dots" /><div className="flow-tag">creator fee</div><span className="fs-dots" /><div className="flow-node"><b>Treasury</b><span>swapped to USDC</span></div><span className="fs-dots" /><div className="flow-node vault"><b>The vault</b><span>fills the crates</span></div></div>;
     case "qr":
       return <div className="fs fs-qr"><QrCard /></div>;
     default:

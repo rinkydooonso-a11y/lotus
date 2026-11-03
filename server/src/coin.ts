@@ -43,7 +43,7 @@ export function coinHoldConfig(env: NodeJS.ProcessEnv = process.env): CoinHoldCo
   if (env.LOTUS_HOLD_GATE === 'off') return null;
   // The same address the site shows (NEXT_PUBLIC_COIN_ADDRESS) switches the gate on, so setting it
   // once at launch is enough. The site's placeholder text is not base58, so it reads as "no coin".
-  const mint = (env.COIN_MINT || env.NEXT_PUBLIC_COIN_ADDRESS || env.PUMP_COIN_MINT || '').trim();
+  const mint = (env.COIN_MINT || env.NEXT_PUBLIC_COIN_ADDRESS || '').trim();
   if (!mint || !BASE58.test(mint)) return null;
   // A coin address with no RPC configured must not leave the gate silently off, so fall back to the
   // public endpoint. It is rate limited, which is why SOLANA_RPC_URL should be set for real traffic.

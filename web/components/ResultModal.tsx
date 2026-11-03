@@ -52,7 +52,7 @@ export function ResultModal({ result, onClose, shardsPerTicket }: { result: Open
           {/* The server's message carries the live numbers (how much to hold, how much short). */}
           <p className="reveal-note">{REJECT_TEXT[result.code] ?? result.message}</p>
           {result.code === "needs_coin" && (
-            <a className="btn btn-lg wide" href={LINKS.pump} target="_blank" rel="noopener noreferrer">Get the coin<IconArrowUpRight size={16} /></a>
+            <a className="btn btn-lg wide" href={LINKS.buy} target="_blank" rel="noopener noreferrer">Get the coin<IconArrowUpRight size={16} /></a>
           )}
         </>
       )}

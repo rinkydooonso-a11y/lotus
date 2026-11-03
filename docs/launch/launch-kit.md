@@ -40,7 +40,7 @@ Everything is public: the vault and the live odds.
 GAME_URL_PLACEHOLDER/vault
 
 **7/**
-Where prizes come from: creator fees from trading the CardQuest coin on pump.fun go to the vault and buy the cards. More trading, more cards. Less trading, a thinner vault. Not financial advice, no promises.
+Where prizes come from: the creator share of trading fees on the CardQuest coin (launched on Float) goes to the prize wallet and buys the cards. More trading, more cards. Less trading, a thinner vault. Not financial advice, no promises.
 
 CA: COIN_ADDRESS_PLACEHOLDER
 
@@ -81,6 +81,5 @@ Returns, price targets, "safe", "can't lose", or implying Collector Crypt partne
 
 ## Fee facts (check before posting anything about fees)
 
-- pump.fun's creator fee is 0.30% before the coin graduates, and starts at 0.95% after it moves to PumpSwap, stepping down. pump.fun sets these and can change them; never quote a fixed number as a promise.
-- Launch does not use "Holder Rewards".
-- Fee sharing is set to 100% to the vault. It is a one-time, permanent setting, so do not say it can be changed later.
+- The coin is on Float (Raydium LaunchLab). The creator picks a trading fee of 1%, 2% or 2.5% per buy and sell; Raydium keeps part, and Float splits the rest: holders 15%, creator 5%, Float's flagship buyback 35%, traders' airdrop 35%, Float treasury 10%. Our creator share is paid by Float's bot into the prize wallet. Float sets these and can change them; never quote a fixed number as a promise.
+- The coin's fees are paid in its paired token (CARDS, or SOL). The worker swaps them to SOL for the card fund.
