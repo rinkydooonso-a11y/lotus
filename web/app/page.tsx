@@ -26,16 +26,11 @@ export default function Home() {
   return (
     <div className={full ? "home full" : "home"}>
       <div className="home-page">
-        <Hero />
+        <Hero map={<div className="stage"><MapView /></div>} />
         <Marquee feed={feed} />
         <HowSection />
         <PullsSection feed={feed} />
-      </div>
-      <section className="globe-sec">
         {!full && <GlobeHead />}
-        <div className="stage"><MapView /></div>
-      </section>
-      <div className="home-page">
         <NumbersBand feed={feed} />
         <FinalCta />
         <SiteFooter />
