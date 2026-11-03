@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/client";
 import { SERVICE_CITIES } from "@/lib/cities";
-import { pickCity, setCity, useCity } from "@/lib/cityStore";
+import { setCity } from "@/lib/cityStore";
+import { setTab, useTab } from "@/lib/tabStore";
 import { TIER_LABEL, usd } from "@/lib/format";
-import { COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
+import { FREE_OPENS_PER_DAY, MAX_TICKETS } from "@/lib/rules";
 import { OPEN_RADIUS_M } from "@/lib/geo";
-import { LINKS, coinLive } from "@/lib/links";
+import { LINKS } from "@/lib/links";
 import type { Feed, Tier, VaultStats } from "@/lib/types";
 import { ConnectSheet } from "./ConnectSheet";
 import { SiteFooter } from "./Docs";
@@ -55,23 +56,13 @@ export function HeroCopy() {
               <span><Ticket size={18} /><b className="num">{balances.tickets}</b><small>/ {MAX_TICKETS} tickets</small></span>
             </Link>
           )}
-          <Link href="/how" className="btn btn-lg btn-gray">How it works</Link>
+          
         </div>
       )}
       <div className="hero-qr hide-phone"><QrCard className="qr-card" /></div>
     </div>
   );
 }
-
-type Tab = "stats" | "crates" | "pulls" | "collectors" | "how" | "more";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "stats", label: "Live stats" },
-  { id: "crates", label: "In the crates" },
-  { id: "pulls", label: "Pulls" },
-  { id: "collectors", label: "Top collectors" },
-  { id: "how", label: "How it works" },
-  { id: "more", label: "More" },
-];
 
 const TIERS: Tier[] = ["grail", "rare", "uncommon", "common"];
 const BANDS: Record<Tier, string> = { grail: "$300+", rare: "$75 to $300", uncommon: "$30 to $75", common: "Under $30" };
@@ -152,34 +143,14 @@ function HowPanel() {
         <WatchButton label="Watch the film" />
         <Link href="/how" className="link-more">Read the full guide<IconChevronRight size={15} /></Link>
       </div>
-    </section>
-  );
-}
-
-function MorePanel() {
-  const { user, loading } = useAuth();
-  const city = useCity();
-  return (
-    <section className="panel-sec">
-      <p className="eyebrow">Where it&apos;s live</p>
-      <h2 className="panel-title">{SERVICE_CITIES.length} cities. Tap one to fly there.</h2>
-      <ul className="city-grid" aria-label="Launch cities">
-        {SERVICE_CITIES.map((c, i) => (
-          <li key={c.name}><button className={c.name === city ? "on" : ""} onClick={() => pickCity(c.name)}><span className="mono">{String(i + 1).padStart(2, "0")}</span>{c.name}</button></li>
-        ))}
-      </ul>
-      <div className="more-cta">
-        <p>{coinLive ? `Hold $${COIN_HOLD_USD} of ${LINKS.ticker} to open crates.` : "Free to play."} 18+. Play where it&apos;s safe and legal.</p>
-        {!loading && !user && <ConnectButton />}
-      </div>
       <SiteFooter />
     </section>
   );
 }
 
-/** Tabs along the bottom of the globe: each opens its panel over the map, so the home page itself never scrolls. */
+/** The panels the top bar opens over the globe, so the home page itself never scrolls. */
 export function HomeSections({ feed }: { feed: Feed | null }) {
-  const [tab, setTab] = useState<Tab | null>(null);
+  const tab = useTab();
   const [vault, setVault] = useState<VaultStats | null>(null);
   useEffect(() => { void fetch("/api/vault").then((r) => (r.ok ? r.json() : null)).then((v: VaultStats | null) => v && setVault(v)).catch(() => undefined); }, []);
   useEffect(() => {
@@ -190,31 +161,24 @@ export function HomeSections({ feed }: { feed: Feed | null }) {
     window.addEventListener("cq:city", picked);
     return () => { window.removeEventListener("keydown", k); window.removeEventListener("cq:city", picked); };
   }, [tab]);
+  useEffect(() => () => setTab(null), []);
+  if (!tab) return null;
   return (
     <div className="home-tabs">
-      {tab && (
-        <div className="tab-panel" role="tabpanel">
-          <button className="tab-close" onClick={() => setTab(null)} aria-label="Close"><IconClose size={16} /></button>
-          {tab === "stats" && <StatsPanel feed={feed} vault={vault} />}
-          {tab === "crates" && <CratesPanel vault={vault} />}
-          {tab === "pulls" && (
-            <section className="panel-sec wide">
-              <p className="eyebrow"><span className="live-dot" />Pulls</p>
-              <h2 className="panel-title">Real cards, pulled on real streets.</h2>
-              <PullsShowcase feed={feed} />
-            </section>
-          )}
-          {tab === "collectors" && <CollectorsPanel feed={feed} />}
-          {tab === "how" && <HowPanel />}
-          {tab === "more" && <MorePanel />}
-        </div>
-      )}
-      <nav className="tab-bar" role="tablist" aria-label="More about CardQuest">
-        {TABS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(tab === t.id ? null : t.id)}>{t.label}</button>
-        ))}
-      </nav>
+      <div className="tab-panel" role="dialog" aria-label="Details">
+        <button className="tab-close" onClick={() => setTab(null)} aria-label="Close"><IconClose size={16} /></button>
+        {tab === "stats" && <StatsPanel feed={feed} vault={vault} />}
+        {tab === "crates" && <CratesPanel vault={vault} />}
+        {tab === "pulls" && (
+          <section className="panel-sec wide">
+            <p className="eyebrow"><span className="live-dot" />Pulls</p>
+            <h2 className="panel-title">Real cards, pulled on real streets.</h2>
+            <PullsShowcase feed={feed} />
+          </section>
+        )}
+        {tab === "collectors" && <CollectorsPanel feed={feed} />}
+        {tab === "how" && <HowPanel />}
+      </div>
     </div>
   );
 }
-
