@@ -9,7 +9,8 @@ import { ConnectSheet } from "./ConnectSheet";
 import { CaChip, XButton } from "./CaChip";
 import { openFilm } from "./Film";
 import { Logo } from "./Logo";
-import { NAV, NavLinks, ext } from "./Nav";
+import { HOME_TABS, NAV, NavLinks, ext } from "./Nav";
+import { setTab } from "@/lib/tabStore";
 import { Portal, useScrollLock } from "./Portal";
 import { IconArrowUpRight, IconClose, IconMenu, IconPlay, Shard, Ticket } from "./Icons";
 
@@ -62,7 +63,7 @@ function PhoneMenu({ onClose }: { onClose: () => void }) {
         </div>
         <nav className="pmenu-links" onClick={onClose}>
           <Link href="/" className={path === "/" ? "on" : ""}>Play</Link>
-          {NAV.map((t, i) => <Link key={t.href} href={t.href} {...ext(t.href)} className={path === t.href ? "on" : ""} style={{ animationDelay: `${(i + 1) * 30}ms` }}>{t.label}</Link>)}
+          {path === "/" ? HOME_TABS.map((t, i) => <button key={t.id} style={{ animationDelay: `${(i + 1) * 30}ms` }} onClick={() => setTab(t.id)}>{t.label}</button>) : NAV.map((t, i) => <Link key={t.href} href={t.href} {...ext(t.href)} className={path === t.href ? "on" : ""} style={{ animationDelay: `${(i + 1) * 30}ms` }}>{t.label}</Link>)}
         </nav>
         <div className="pmenu-sub" onClick={onClose}>
           <button onClick={openFilm}><IconPlay size={14} />Watch the film</button>
