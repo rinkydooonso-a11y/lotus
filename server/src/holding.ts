@@ -1,6 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
 import {
-  coinHoldConfig,
   fetchCoinBalance,
   fetchCoinPriceUsd,
   requiredBaseUnits,
@@ -9,6 +8,7 @@ import {
   type CoinHoldConfig,
 } from './coin';
 import { getPool } from './db';
+import { resolveCoinHoldConfig } from './appSettings';
 import type { CoinHoldStatus, HoldVerdict } from './types';
 
 /**
@@ -82,10 +82,10 @@ export async function checkCoinHold(
   args: { playerId: string; walletAddress: string },
   deps: HoldDeps = {},
 ): Promise<HoldVerdict> {
-  const cfg = deps.config === undefined ? coinHoldConfig() : deps.config;
+  const db = deps.db ?? getPool();
+  const cfg = deps.config === undefined ? await resolveCoinHoldConfig(process.env, db as Pool) : deps.config;
   if (!cfg) return { ok: true, gate: 'off' };
 
-  const db = deps.db ?? getPool();
   const now = deps.now ?? new Date();
   const getBalance = deps.balance ?? ((owner, c) => fetchCoinBalance(owner, c));
   const getPrice = deps.price ?? ((c) => fetchCoinPriceUsd(c));
@@ -178,9 +178,9 @@ export async function getCoinHoldStatus(
   playerId: string,
   deps: HoldDeps = {},
 ): Promise<CoinHoldStatus> {
-  const cfg = deps.config === undefined ? coinHoldConfig() : deps.config;
-  if (!cfg) return { gate: 'off' };
   const db = deps.db ?? getPool();
+  const cfg = deps.config === undefined ? await resolveCoinHoldConfig(process.env, db as Pool) : deps.config;
+  if (!cfg) return { gate: 'off' };
   const now = deps.now ?? new Date();
   const row = (await db.query<WindowRow>(SELECT_WINDOW, [playerId])).rows[0];
   if (!row || row.expires_at <= now) return { gate: 'on', qualified: false, requiredUsd: cfg.requiredUsd };

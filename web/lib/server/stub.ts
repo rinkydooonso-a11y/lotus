@@ -89,6 +89,8 @@ function roll(): "shards" | Tier {
   return "shards";
 }
 
+const coinState: { mint: string | null; gate: "on" | "off" } = { mint: null, gate: "on" };
+
 export const stubServer: GameServer = {
   async playerForWallet(address) {
     let id = db.byWallet.get(address);
@@ -177,6 +179,7 @@ export const stubServer: GameServer = {
     const byTier = Object.fromEntries(TIERS.map((t) => [t, { count: avail.filter((i) => i.tier === t).length, odds: (db.odds.find((r) => r.tier === t)?.weight ?? 0) / total }])) as Record<Tier, { count: number; odds: number }>;
     return { cardsInVault: avail.length, cardsSent: db.inventory.filter((i) => i.status === "sent").length, totalValueUsd: avail.reduce((s, i) => s + i.valueUsd, 0), byTier, recentTreasury: [{ at: new Date().toISOString(), kind: "stub", note: "Stub data (devnet)" }] };
   },
+  async coinMint() { return coinState.mint; },
   async feed() {
     const live: FeedPull[] = [];
     for (const p of db.players.values())
@@ -193,6 +196,8 @@ export const stubServer: GameServer = {
     };
   },
   admin: {
+    async coinSettings() { return { mint: coinState.mint, gate: coinState.gate }; },
+    async setCoin(input) { coinState.mint = input.mint; coinState.gate = input.gate; return { ...input, priceUsd: null, decimals: null }; },
     async inventory() { return db.inventory; },
     async addItem(item) {
       const valueUsd = item.valueUsd;

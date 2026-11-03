@@ -21,3 +21,5 @@ export const oddsBody = z.object({
   rows: z.array(z.object({ tier: z.enum(["common", "uncommon", "rare", "grail", "shards"]), weight: z.number().min(0).max(1_000_000) })).min(1),
 });
 export const freezeBody = z.object({ playerId: z.string().min(1), frozen: z.boolean() });
+
+export const coinBody = z.object({ mint: z.string().trim().min(32).max(44).nullable(), gate: z.enum(["on", "off"]) });

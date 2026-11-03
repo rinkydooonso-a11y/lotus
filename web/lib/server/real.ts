@@ -78,6 +78,9 @@ export const realServer: GameServer = {
       recentTreasury: treasury.rows.map((r) => ({ at: r.created_at.toISOString(), kind: r.kind, note: r.note ?? "", txSignature: r.tx_signature ?? undefined })),
     };
   },
+  async coinMint() {
+    return srv.currentCoinMint();
+  },
   async feed() {
     const db = srv.getPool();
     const [recent, biggest, collectors, totals] = await Promise.all([
@@ -98,6 +101,11 @@ export const realServer: GameServer = {
     };
   },
   admin: {
+    async coinSettings() {
+      const s = await srv.readCoinSettings();
+      return { mint: s.mint, gate: s.gateOff ? "off" : "on" };
+    },
+    async setCoin(input) { return srv.setCoinSettings(input); },
     async inventory() {
       const { rows } = await srv.getPool().query("SELECT id, nft_mint, card_name, grade, value_usd, tier, status, location FROM inventory_items ORDER BY acquired_at DESC LIMIT 500");
       return rows.map((r): AdminInventoryItem => ({ id: r.id, nftMint: r.nft_mint, cardName: r.card_name, grade: r.grade ?? "", valueUsd: Number(r.value_usd), tier: r.tier, status: r.status, location: r.location }));

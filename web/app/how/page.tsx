@@ -6,7 +6,8 @@ import { Mark } from "@/components/Logo";
 import { CardThumb } from "@/components/CardThumb";
 import { CrateGlyph } from "@/components/Icons";
 import { SERVICE_CITIES } from "@/lib/cities";
-import { LINKS, coinLive } from "@/lib/links";
+import { game } from "@/lib/server";
+import { LINKS, coinLive as staticCoinLive } from "@/lib/links";
 import { COIN_HOLD_USD, FREE_OPENS_PER_DAY, MAX_TICKETS, SHARDS_PER_TICKET } from "@/lib/rules";
 
 export const metadata: Metadata = { title: "How CardQuest works", description: "Walk to crates on the map, open them, and win real graded trading cards from a public vault." };
@@ -17,7 +18,7 @@ const steps = [
   ["Walk up to a crate", "Get within about 40 metres and it unlocks. We check your movement, so no teleporting."],
   ["Open it", "You get a graded card, or shards toward a ticket. Cards go straight to your wallet."],
 ];
-const rules = [
+const rulesFor = (coinLive: boolean) => [
   ["One player, one account", "Multiple accounts or shared wallets get frozen."],
   ["Real movement only", "Spoofed GPS, emulators and impossible speeds are flagged automatically."],
   [`${FREE_OPENS_PER_DAY} opens a day`, `Everyone gets ${FREE_OPENS_PER_DAY} free opens each day. Tickets earned from shards buy you more.`],
@@ -25,7 +26,7 @@ const rules = [
   ["Unsent prizes can be held", "If an account is under review, its pending cards wait until it's cleared."],
   ["Play safe", "Watch where you're walking. Never go somewhere unsafe or off-limits for a crate."],
 ];
-const faq = [
+const faqFor = (coinLive: boolean) => [
   ["Is it free to play?", coinLive ? `Opening crates costs nothing, but you need to hold $${COIN_HOLD_USD} of ${LINKS.ticker} in your wallet to open them. We check when you open, and the amount is fixed for 48 hours once you qualify. If you drop below it in that window, opening pauses until the window ends.` : "Yes. Connecting a wallet and opening crates costs nothing."],
   ["Are the cards real?", "Yes. Each prize is a Collector Crypt NFT backed by a professionally graded physical card held in a vault. Keep it, sell it, or redeem it on Collector Crypt to have the card shipped."],
   ["What are shards and tickets?", `Crates without a card pay 1 to 3 shards. ${SHARDS_PER_TICKET} shards make a ticket, up to ${MAX_TICKETS}. Spending a ticket buys another open the same day.`],
@@ -37,7 +38,12 @@ function Phone({ children, caption }: { children: React.ReactNode; caption: stri
   return <figure className="phone"><div className="phone-screen">{children}</div><figcaption>{caption}</figcaption></figure>;
 }
 
-export default function How() {
+export const dynamic = "force-dynamic";
+
+export default async function How() {
+  const coinLive = Boolean(await game.coinMint().catch(() => null)) || staticCoinLive;
+  const rules = rulesFor(coinLive);
+  const faq = faqFor(coinLive);
   return (
     <div className="docs">
       <section className="docs-hero how-hero">

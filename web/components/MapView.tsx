@@ -11,6 +11,7 @@ import { setExploring, useExploring, useFullMap } from "@/lib/viewStore";
 import { ResultModal } from "./ResultModal";
 import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { LINKS } from "@/lib/links";
+import { useCoin } from "@/lib/useCoin";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { inWalletBrowser, isMobileUA } from "@/lib/auth/phantomDeeplink";
 import { QrCard } from "./QrCard";
@@ -101,6 +102,7 @@ const RING = 2 * Math.PI * 25;
 interface Fix { lat: number; lng: number; acc: number }
 
 export default function MapView() {
+  const { buyUrl } = useCoin();
   const { user, balances, setBalances, loading } = useAuth();
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -457,7 +459,7 @@ export default function MapView() {
           )}
           {near && hold && needsCoin && !hold.lockedOut ? (
             // Nothing to tap for an open here, so the button becomes the way to fix it.
-            <a className="btn btn-lg wide" href={LINKS.buy} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}<IconArrowUpRight size={16} /></a>
+            <a className="btn btn-lg wide" href={buyUrl} target="_blank" rel="noopener noreferrer">Get ${hold.requiredUsd} of {LINKS.ticker}<IconArrowUpRight size={16} /></a>
           ) : (
             <button className={near && canOpen && !needsCoin ? "btn btn-lg wide" : "btn btn-lg btn-gray wide"} disabled={!near || opening || !canOpen || needsCoin} onClick={() => void open()}>
               {opening ? "Opening…"

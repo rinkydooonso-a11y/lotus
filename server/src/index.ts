@@ -17,8 +17,10 @@ export {
 export { openCrate, type OpenCrateDeps } from './openCrate';
 export { getAllowance } from './tickets';
 export { checkCoinHold, getCoinHoldStatus, pruneHolderWindows, type HoldDeps } from './holding';
+export { currentCoinMint, setCoinSettings, readCoinSettings, resolveCoinHoldConfig, type CoinSetResult } from './appSettings';
 export {
   coinHoldConfig,
+  isBase58Address,
   fetchCoinBalance,
   fetchCoinPriceUsd,
   requiredBaseUnits,

@@ -3,6 +3,35 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth/client";
 import type { AdminInventoryItem, FlaggedPlayer, OddsRow } from "@/lib/types";
 
+function CoinBox() {
+  const [mint, setMint] = useState("");
+  const [gate, setGate] = useState<"on" | "off">("on");
+  const [live, setLive] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void fetch("/api/admin/coin", { cache: "no-store" }).then((r) => r.json()).then((j: { mint: string | null; gate: "on" | "off" }) => { setLive(j.mint); setMint(j.mint ?? ""); setGate(j.gate); }).catch(() => undefined); }, []);
+  const save = async (clear = false) => {
+    setBusy(true); setNote("");
+    try {
+      const r = await fetch("/api/admin/coin", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ mint: clear ? null : mint.trim(), gate }) });
+      const j = await r.json();
+      if (!r.ok) { setNote(j.message ?? "Could not save."); return; }
+      setLive(j.mint); if (clear) setMint("");
+      setNote(clear ? "Coin cleared. The site shows Launching soon." : `Saved. The site and buy button are live within a few seconds. ${j.priceUsd ? `Price feed sees it at $${j.priceUsd}.` : "The price feed does not know it yet: keep the gate off until it does, or players cannot open crates."}`);
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="card">
+      <h2>Coin launch</h2>
+      <p className="muted small">Paste the coin address the moment it exists. No redeploy: it goes live on the site in a few seconds.</p>
+      <label className="orow"><span>Coin address</span><input value={mint} onChange={(e) => setMint(e.target.value)} placeholder="Paste the contract address" /></label>
+      <label className="orow"><span>Holding gate</span><select value={gate} onChange={(e) => setGate(e.target.value as "on" | "off")}><option value="on">On: players must hold $25 of the coin</option><option value="off">Off: everyone can open (use until the price shows up)</option></select></label>
+      <div className="dline"><button className="btn sm" disabled={busy || mint.trim().length < 32} onClick={() => void save()}>Save and go live</button>{live && <button className="btn sm ghost" disabled={busy} onClick={() => void save(true)}>Clear coin</button>}<span className="muted small">{live ? `Live: ${live.slice(0, 4)}…${live.slice(-4)}` : "No coin set"}</span></div>
+      {note && <p className="muted small">{note}</p>}
+    </div>
+  );
+}
+
 export default function Admin() {
   const { user, loading } = useAuth();
   const [inv, setInv] = useState<AdminInventoryItem[]>([]);
@@ -60,6 +89,7 @@ export default function Admin() {
           ))}
         </ul>
       )}
+      <CoinBox />
       <h2>Inventory ({inv.length})</h2>
       <div className="card">
         {(["nftMint", "cardName", "grade", "valueUsd", "imageUrl", "costUsd", "purchaseTxSignature"] as const).map((k) => (

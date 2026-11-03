@@ -15,7 +15,12 @@ export interface GameServer {
   vaultStats(): Promise<VaultStats>;
   /** Public, read-only feed of recent and biggest card pulls. */
   feed(): Promise<Feed>;
+  /** The coin address the site shows: set in the admin box, else the environment, else null (not launched). */
+  coinMint(): Promise<string | null>;
   admin: {
+    coinSettings(): Promise<{ mint: string | null; gate: "on" | "off" }>;
+    /** Sets or clears the coin address and the holder-gate switch. Rejects an address that is not a token. */
+    setCoin(input: { mint: string | null; gate: "on" | "off" }): Promise<{ mint: string | null; gate: "on" | "off"; priceUsd: number | null; decimals: number | null }>;
     inventory(): Promise<AdminInventoryItem[]>;
     addItem(item: { nftMint: string; cardName: string; grade?: string; valueUsd: number; imageUrl?: string; location?: "hot" | "vault"; costUsd?: number; purchaseTxSignature?: string }): Promise<{ id: string }>;
     setItemStatus(id: string, status: "available" | "withheld" | "removed"): Promise<void>;

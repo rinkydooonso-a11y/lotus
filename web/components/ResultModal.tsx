@@ -5,6 +5,7 @@ import { CardThumb } from "./CardThumb";
 import { Sheet } from "./Sheet";
 import { IconAlert, IconArrowUpRight, IconCoin, Shard, Ticket } from "./Icons";
 import { LINKS } from "@/lib/links";
+import { useCoin } from "@/lib/useCoin";
 
 const REJECT_TEXT: Record<string, string> = {
   too_far: "You're too far from this crate. Walk closer.",
@@ -19,6 +20,7 @@ const REJECT_TEXT: Record<string, string> = {
 };
 
 export function ResultModal({ result, onClose, shardsPerTicket }: { result: OpenResult; onClose: () => void; shardsPerTicket: number }) {
+  const { buyUrl } = useCoin();
   const coinReject = result.kind === "rejected" && (result.code === "needs_coin" || result.code === "hold_locked");
   return (
     <Sheet onClose={onClose} label={result.kind === "card" ? "You pulled a card" : result.kind === "shards" ? "Shards" : "Couldn't open"} center className={`reveal ${result.kind === "card" ? "r-card t-" + result.tier : "r-" + result.kind}`}>
@@ -52,7 +54,7 @@ export function ResultModal({ result, onClose, shardsPerTicket }: { result: Open
           {/* The server's message carries the live numbers (how much to hold, how much short). */}
           <p className="reveal-note">{REJECT_TEXT[result.code] ?? result.message}</p>
           {result.code === "needs_coin" && (
-            <a className="btn btn-lg wide" href={LINKS.buy} target="_blank" rel="noopener noreferrer">Get the coin<IconArrowUpRight size={16} /></a>
+            <a className="btn btn-lg wide" href={buyUrl} target="_blank" rel="noopener noreferrer">Get the coin<IconArrowUpRight size={16} /></a>
           )}
         </>
       )}
