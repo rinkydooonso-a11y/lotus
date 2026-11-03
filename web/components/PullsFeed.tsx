@@ -80,28 +80,3 @@ export function PullsShowcase({ feed }: { feed: Feed | null }) {
     </div>
   );
 }
-
-/** Desktop hero: the latest pulls, one at a time, like notifications landing next to the globe. */
-export function PullTicker({ feed }: { feed: Feed | null }) {
-  const [i, setI] = useState(0);
-  const list = feed?.recent ?? [];
-  useEffect(() => {
-    if (list.length < 2) return;
-    const t = setInterval(() => setI((x) => x + 1), 4500);
-    return () => clearInterval(t);
-  }, [list.length]);
-  if (list.length === 0) return null;
-  const p = list[i % list.length];
-  return (
-    <div className="ticker hide-phone" aria-live="polite">
-      <div className="ticker-in" key={p.id}>
-        <CardThumb tier={p.tier} grade={p.grade} imageUrl={p.imageUrl} size="sm" />
-        <div className="grow">
-          <p className="ticker-top"><span className="live-dot" /><span className="mono">{p.collector}</span> pulled<span className="ticker-ago">{timeAgo(p.at)}</span></p>
-          <p className="ticker-card">{p.cardName} <span className="muted">{p.grade}</span></p>
-        </div>
-        <b className={`ticker-val num tc-${p.tier}`}>{usd(p.valueUsd)}</b>
-      </div>
-    </div>
-  );
-}

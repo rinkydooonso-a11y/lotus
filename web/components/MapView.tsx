@@ -7,7 +7,7 @@ import { haversineM, OPEN_RADIUS_M } from "@/lib/geo";
 import { deviceId } from "@/lib/device";
 import { SERVICE_CITIES } from "@/lib/cities";
 import type { Balances, Crate, OpenResult } from "@/lib/types";
-import { setExploring, useExploring, useFullMap, usePhone } from "@/lib/viewStore";
+import { setExploring, useExploring, useFullMap } from "@/lib/viewStore";
 import { ResultModal } from "./ResultModal";
 import { SHARDS_PER_TICKET } from "@/lib/rules";
 import { LINKS } from "@/lib/links";
@@ -22,8 +22,24 @@ const STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL || "https://tiles.openfr
 const PITCH_3D = 55;
 const BEARING_3D = -17;
 /** How far out the resting globe sits: big enough to read as a planet, small enough to show its edge. */
-const globeZoom = () => (window.innerWidth < 640 ? 1.05 : window.innerWidth < 1200 ? 1.35 : 1.6);
+const globeZoom = (box?: HTMLElement | null) => {
+  // A globe is about 163 * 2^zoom px across; fill roughly 80% of the smaller side of its box.
+  const side = box ? Math.min(box.clientWidth, box.clientHeight) : Math.min(window.innerWidth, window.innerHeight);
+  return Math.max(0.8, Math.min(3, Math.log2((side * 0.8) / 163)));
+};
 
+/** Brand the base map: lighter land on near-black sea so the continents read from space, and no country names on the globe. */
+function styleBase(m: maplibregl.Map) {
+  const set = (id: string, prop: string, v: unknown) => { if (m.getLayer(id)) m.setPaintProperty(id, prop, v as never); };
+  set("background", "background-color", "#2a2a2f");
+  set("water", "fill-color", "#070708");
+  set("landuse_park", "fill-color", "#222225");
+  for (const id of ["boundary_country_z0-4", "boundary_country_z5-"]) set(id, "line-color", "#5a5a62");
+  set("boundary_state", "line-color", "#2e2e33");
+  for (const id of ["place_country_major", "place_country_minor", "place_country_other", "place_state", "water_name"]) {
+    set(id, "text-opacity", ["interpolate", ["linear"], ["zoom"], 0, 0, 4.5, 0, 5.5, 1]);
+  }
+}
 /** Swap the flat building fill for extruded buildings (OpenFreeMap/OpenMapTiles schema). */
 function add3dBuildings(m: maplibregl.Map) {
   if (m.getLayer("building-3d")) return;
@@ -56,8 +72,8 @@ function addCityLayers(m: maplibregl.Map) {
     type: "geojson",
     data: { type: "FeatureCollection", features: SERVICE_CITIES.map((c) => ({ type: "Feature", properties: { name: c.name }, geometry: { type: "Point", coordinates: [c.lng, c.lat] } })) },
   });
-  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 6, 30], "circle-color": "#4d9aff", "circle-opacity": 0.35, "circle-blur": 1 } });
-  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#4d9aff", "circle-stroke-width": 2.5 } });
+  m.addLayer({ id: "cities-glow", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 12, 6, 30], "circle-color": "#d4ff2a", "circle-opacity": 0.35, "circle-blur": 1 } });
+  m.addLayer({ id: "cities-dot", type: "circle", source: "cities", maxzoom: 10, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 0, 3.5, 6, 6], "circle-color": "#fff", "circle-stroke-color": "#d4ff2a", "circle-stroke-width": 2.5 } });
   if (!m.getStyle().glyphs) return;
   m.addLayer({
     id: "cities-label", type: "symbol", source: "cities", minzoom: 1.2, maxzoom: 10,
@@ -96,7 +112,7 @@ export default function MapView() {
   const [fix, setFix] = useState<Fix | null>(null);
   const [geoErr, setGeoErr] = useState<string | null>(null);
   // Crates only open from a phone: desktop never asks for location and shows a QR hand-off instead.
-  const [desktop, setDesktop] = useState(false);
+  const [desktop, setDesktop] = useState<boolean | null>(null);
   useEffect(() => setDesktop(!isMobileUA(navigator.userAgent, navigator.maxTouchPoints)), []);
   const [crates, setCrates] = useState<Crate[]>([]);
   const [sel, setSel] = useState<string | null>(null);
@@ -108,8 +124,7 @@ export default function MapView() {
   const city = useCity();
   const full = useFullMap();
   const exploring = useExploring();
-  const phone = usePhone();
-  const [outside, setOutside] = useState<{ name: string; km: number } | null>(null);
+    const [outside, setOutside] = useState<{ name: string; km: number } | null>(null);
   const fixRef = useRef<Fix | null>(null);
   fixRef.current = fix;
 
@@ -123,13 +138,14 @@ export default function MapView() {
     // so they get the flat map instead.
     const flat = inWalletBrowser(window as never, navigator.userAgent, navigator.maxTouchPoints ?? 0);
     const m = new maplibregl.Map({
-      container: el.current, style: STYLE_URL, center: [-30, 28], zoom: globeZoom(), pitch: 0, maxPitch: 70,
+      container: el.current, style: STYLE_URL, center: [-30, 28], zoom: globeZoom(el.current), pitch: 0, maxPitch: 70,
       // Cap the render resolution so 3x phones stay smooth.
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2), fadeDuration: 150, attributionControl: { compact: true },
     });
     m.on("style.load", () => {
       if (!flat) m.setProjection({ type: "globe" });
-      if (!flat) m.setSky({ "sky-color": "#000000", "horizon-color": "#1c3f86", "fog-color": "#000000", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
+      if (!flat) m.setSky({ "sky-color": "#0a0a0b", "horizon-color": "#3c4a0c", "fog-color": "#0a0a0b", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
+      styleBase(m);
       addCityLayers(m);
       // Labels laid flat on the ground smear into tall blurry strips at the 55° street-level tilt (and on the globe),
       // so keep point labels upright facing the screen; road names still follow their roads.
@@ -152,10 +168,14 @@ export default function MapView() {
     // Idle spin until someone touches the map or we know where the player is.
     let raf = 0, last = 0;
     const spin = (t: number) => {
-      if (spinning.current && !m.isMoving() && m.getZoom() < 4) m.setCenter([m.getCenter().lng + ((t - (last || t)) / 1000) * 4, m.getCenter().lat]);
+      if (spinning.current && visible && !document.hidden && !m.isMoving() && m.getZoom() < 4) m.setCenter([m.getCenter().lng + ((t - (last || t)) / 1000) * 4, m.getCenter().lat]);
       last = t;
       raf = requestAnimationFrame(spin);
     };
+    // Don't burn the visitor's GPU on a globe nobody can see.
+    let visible = true;
+    const io = new IntersectionObserver(([e]) => { visible = !!e?.isIntersecting; }, { threshold: 0.05 });
+    io.observe(el.current);
     const stop = () => { spinning.current = false; };
     m.on("mousedown", stop); m.on("touchstart", stop); m.on("wheel", stop);
     if (!reduced) raf = requestAnimationFrame(spin);
@@ -169,11 +189,7 @@ export default function MapView() {
       if (padRaf) return;
       padRaf = requestAnimationFrame(() => {
         padRaf = 0;
-        const W = window.innerWidth;
         const rect = (q: string) => { const n = document.querySelector<HTMLElement>(q); if (!n) return null; const r = n.getBoundingClientRect(); return r.width ? r : null; };
-        const hero = rect(".hero"), copy = rect(".hero-copy");
-        const cut = W < 900 && hero && copy ? `${Math.max(0, Math.round(hero.bottom - copy.top - 24))}px` : "";
-        if (box.style.bottom !== cut) { box.style.bottom = cut; m.resize(); }
         const b = box.getBoundingClientRect();
         const top = rect(".topbar");
         const card = rect(".mapwrap .drawer") ?? rect(".mapwrap .map-card");
@@ -215,7 +231,7 @@ export default function MapView() {
     window.addEventListener("pageshow", remeasure);
     map.current = m;
     return () => {
-      cancelAnimationFrame(raf); cancelAnimationFrame(padRaf); window.clearTimeout(settle); ro.disconnect(); mo.disconnect();
+      cancelAnimationFrame(raf); cancelAnimationFrame(padRaf); io.disconnect(); window.clearTimeout(settle); ro.disconnect(); mo.disconnect();
       window.removeEventListener("resize", pad); vv?.removeEventListener("resize", remeasure);
       window.removeEventListener("orientationchange", remeasure); window.removeEventListener("pageshow", remeasure);
       m.remove(); map.current = null;
@@ -236,7 +252,7 @@ export default function MapView() {
 
   // live location
   useEffect(() => {
-    if (desktop) return;
+    if (desktop !== false) return; // unknown yet, or a desktop: never ask for location
     if (!navigator.geolocation) { setGeoErr("Location isn't available in this browser."); return; }
     const id = navigator.geolocation.watchPosition(
       (p) => { setGeoErr(null); setFix({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); },
@@ -285,8 +301,8 @@ export default function MapView() {
     const paint = () => {
       if (!m.getLayer("cities-dot")) return;
       const isSel = ["==", ["get", "name"], city] as maplibregl.ExpressionSpecification;
-      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#4d9aff", "#ffffff"]);
-      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#4d9aff"]);
+      m.setPaintProperty("cities-dot", "circle-color", ["case", isSel, "#d4ff2a", "#ffffff"]);
+      m.setPaintProperty("cities-dot", "circle-stroke-color", ["case", isSel, "#ffffff", "#d4ff2a"]);
       m.setPaintProperty("cities-dot", "circle-radius", ["interpolate", ["linear"], ["zoom"], 0, ["case", isSel, 5.5, 3.5], 6, ["case", isSel, 9, 6]]);
       m.setPaintProperty("cities-glow", "circle-opacity", ["case", isSel, 0.7, 0.3]);
     };
@@ -368,7 +384,7 @@ export default function MapView() {
     const m = map.current;
     if (!m) return;
     setSel(null);
-    fly(m, { center: [m.getCenter().lng, 25], zoom: globeZoom(), pitch: 0, bearing: 0, duration: 2600, curve: 1.4, essential: true });
+    fly(m, { center: [m.getCenter().lng, 25], zoom: globeZoom(el.current), pitch: 0, bearing: 0, duration: 2600, curve: 1.4, essential: true });
     m.once("moveend", () => { spinning.current = true; });
   };
 
@@ -377,7 +393,7 @@ export default function MapView() {
       <div ref={el} className="map" onClick={() => setSel(null)} />
 
       <div className="map-ctl">
-        {!full && !phone && <button className="map-pill" onClick={() => setExploring(true)}><IconExpand size={16} />Explore the map</button>}
+        {!full && <button className="map-pill" onClick={() => setExploring(true)}><IconExpand size={16} />Full screen</button>}
         {zoomedIn && (!full || exploring) && <button className="map-pill" onClick={toGlobe}><IconGlobe size={16} />Globe</button>}
         {(full || fix) && (
           <div className="map-stack">
@@ -401,9 +417,9 @@ export default function MapView() {
       {/* Tickets are spent by opening, not by a button: the next open after the free one uses one. */}
       {balances && balances.tickets > 0 && <div className="ticket-fab" role="status"><Ticket size={18} />{balances.tickets} extra {balances.tickets === 1 ? "open" : "opens"}</div>}
 
-      {user && desktop && !fix && <div className="map-card"><QrCard className="qr-card" /></div>}
-      {user && !desktop && geoErr && !(user.isAdmin && !fix) && <div className="map-card"><p className="map-card-line">{geoErr}</p></div>}
-      {user && !desktop && !fix && (
+      {user && desktop === true && !fix && <div className="map-card"><QrCard className="qr-card" /></div>}
+      {user && desktop === false && geoErr && !(user.isAdmin && !fix) && <div className="map-card"><p className="map-card-line">{geoErr}</p></div>}
+      {user && desktop === false && !fix && (
         <div className="map-card">
           {walletBrowser ? <WalletBrowserNotice /> : !geoErr && <p className="map-card-line"><span className="spinner" />Finding you…</p>}
           {user.isAdmin && (
