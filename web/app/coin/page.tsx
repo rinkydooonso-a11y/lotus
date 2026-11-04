@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { game } from "@/lib/server";
-import { LINKS, coinLive } from "@/lib/links";
+import { LINKS, buyUrlFor, coinLive } from "@/lib/links";
 import { usd } from "@/lib/format";
 import { CaChip, XButton } from "@/components/CaChip";
 import { FeeFlow, SiteFooter } from "@/components/Docs";
@@ -10,6 +10,7 @@ export const metadata: Metadata = { title: `${LINKS.ticker} · CardQuest` };
 
 export default async function Coin() {
   const vault = await game.vaultStats();
+  const coin = await game.coinMint().catch(() => null);
   return (
     <div className="docs">
       <section className="docs-hero">
@@ -18,7 +19,7 @@ export default async function Coin() {
         <p className="docs-lede">The CardQuest coin. Every trade pays a creator fee, and that fee buys the graded cards hiding in the crates. More trading, fuller vault.</p>
         <div className="coin-actions">
           <div className="row-gap"><CaChip full /><XButton /></div>
-          {coinLive && <a className="btn btn-lg" href={LINKS.buy} target="_blank" rel="noopener noreferrer">Buy {LINKS.ticker}</a>}
+          {(coin || coinLive) && <a className="btn btn-lg" href={coin ? buyUrlFor(coin) : LINKS.buy} target="_blank" rel="noopener noreferrer">Buy {LINKS.ticker}</a>}
           <p className="faint small">Not financial advice. Nothing here promises any price or return.</p>
         </div>
       </section>

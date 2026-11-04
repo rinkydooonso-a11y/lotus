@@ -13,6 +13,10 @@
 /** A 32–44 character base58 address. Narrow enough to catch a typo'd env var. */
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+export function isBase58Address(s: string): boolean {
+  return BASE58.test(s);
+}
+
 export interface CoinHoldConfig {
   mint: string;
   /** USD a wallet must hold to open a crate. */
@@ -39,11 +43,12 @@ function num(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
  * malformed mint is not an error — before launch there is no coin to hold, and refusing every open
  * because an env var is unset would take the game down rather than open it up.
  */
-export function coinHoldConfig(env: NodeJS.ProcessEnv = process.env): CoinHoldConfig | null {
+export function coinHoldConfig(env: NodeJS.ProcessEnv = process.env, mintOverride?: string | null): CoinHoldConfig | null {
   if (env.LOTUS_HOLD_GATE === 'off') return null;
   // The same address the site shows (NEXT_PUBLIC_COIN_ADDRESS) switches the gate on, so setting it
   // once at launch is enough. The site's placeholder text is not base58, so it reads as "no coin".
-  const mint = (env.COIN_MINT || env.NEXT_PUBLIC_COIN_ADDRESS || '').trim();
+  // The admin box (app_settings) takes precedence over the environment when it has an address.
+  const mint = (mintOverride || env.COIN_MINT || env.NEXT_PUBLIC_COIN_ADDRESS || '').trim();
   if (!mint || !BASE58.test(mint)) return null;
   // A coin address with no RPC configured must not leave the gate silently off, so fall back to the
   // public endpoint. It is rate limited, which is why SOLANA_RPC_URL should be set for real traffic.
@@ -117,7 +122,7 @@ interface RpcSupply {
   error?: { message?: string };
 }
 
-async function fetchMintDecimals(cfg: CoinHoldConfig, fetchImpl: typeof fetch): Promise<number> {
+export async function fetchMintDecimals(cfg: CoinHoldConfig, fetchImpl: typeof fetch): Promise<number> {
   const res = await fetchImpl(cfg.rpcUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
