@@ -15,6 +15,7 @@ import { useCoin } from "@/lib/useCoin";
 import { cityByName, pickCity, useCity } from "@/lib/cityStore";
 import { inWalletBrowser, isMobileUA } from "@/lib/auth/phantomDeeplink";
 import { QrCard } from "./QrCard";
+import { addGlobeArt } from "./globeStyle";
 import { ConnectButton } from "./HomePanels";
 import { useInWalletBrowser, WalletBrowserNotice } from "./WalletBrowserNotice";
 import { CrateGlyph, IconArrowUpRight, IconClose, IconCoin, IconExpand, IconGlobe, IconLocate, Ticket } from "./Icons";
@@ -139,6 +140,7 @@ export default function MapView() {
     // Wallet in-app browsers (Phantom on iOS) render the globe projection stretched vertically, labels and markers included,
     // so they get the flat map instead.
     const flat = inWalletBrowser(window as never, navigator.userAgent, navigator.maxTouchPoints ?? 0);
+    let stopArt = () => {};
     const m = new maplibregl.Map({
       container: el.current, style: STYLE_URL, center: [-30, 28], zoom: globeZoom(el.current), pitch: 0, maxPitch: 70,
       // Cap the render resolution so 3x phones stay smooth.
@@ -146,9 +148,10 @@ export default function MapView() {
     });
     m.on("style.load", () => {
       if (!flat) m.setProjection({ type: "globe" });
-      if (!flat) m.setSky({ "sky-color": "#121212", "horizon-color": "#1f5a66", "fog-color": "#121212", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
+      if (!flat) m.setSky({ "sky-color": "#121212", "horizon-color": "#ff7c01", "fog-color": "#121212", "sky-horizon-blend": 0.35, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.9, "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 5, 0.25, 8, 0] });
       styleBase(m);
       addCityLayers(m);
+      stopArt = addGlobeArt(m, reduced);
       // Labels laid flat on the ground smear into tall blurry strips at the 55° street-level tilt (and on the globe),
       // so keep point labels upright facing the screen; road names still follow their roads.
       for (const l of m.getStyle().layers ?? []) {
@@ -233,6 +236,7 @@ export default function MapView() {
     window.addEventListener("pageshow", remeasure);
     map.current = m;
     return () => {
+      stopArt();
       cancelAnimationFrame(raf); cancelAnimationFrame(padRaf); io.disconnect(); window.clearTimeout(settle); ro.disconnect(); mo.disconnect();
       window.removeEventListener("resize", pad); vv?.removeEventListener("resize", remeasure);
       window.removeEventListener("orientationchange", remeasure); window.removeEventListener("pageshow", remeasure);
