@@ -786,3 +786,22 @@ html:has(.home:not(.full)){overflow:hidden}
 .final .qr-text p,.final .qr-text b,.final .copy-link{color:var(--ink)!important}
 .final .qr-text p{opacity:.8}
 .final .qr-card.ink{background:rgba(18,18,18,.08)!important}
+
+/* 404 page */
+.nf-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+
+/* phones held sideways: the 520px hero floor was taller than the screen, so the
+   headline was clipped and the Connect button sat below the fold of a page that can't scroll */
+@media(max-width:899px) and (max-height:500px){
+  .hero{min-height:0}
+  .hero-title{font-size:clamp(24px,8vh,36px);margin-bottom:10px}
+  .hero-lede{max-width:520px;margin-bottom:12px}
+  .hero-actions{align-items:flex-start}
+  .hero-actions .btn-lg{height:44px}
+}
+
+/* tablets: four stat cards in two even rows, three across instead of a tall stack */
+@media(min-width:600px) and (max-width:899px){
+  .stat-cards{grid-template-columns:repeat(2,1fr)}
+  .stat-cards.three{grid-template-columns:repeat(3,1fr)}
+}
