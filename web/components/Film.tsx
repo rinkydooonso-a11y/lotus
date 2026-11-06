@@ -80,7 +80,8 @@ export function FilmHost() {
     if (!open || !playing) return;
     let raf = 0, last = performance.now();
     const tick = (now: number) => {
-      setT((x) => { const n = Math.min(total, x + (now - last)); if (n >= total) setPlaying(false); return n; });
+      // the first frame's timestamp can be a little before `last`; never let the clock run backwards
+      setT((x) => { const n = Math.min(total, x + Math.max(0, now - last)); if (n >= total) setPlaying(false); return n; });
       last = now;
       raf = requestAnimationFrame(tick);
     };
@@ -100,7 +101,7 @@ export function FilmHost() {
   }, [open, city]);
 
   const close = useCallback(() => setOpen(false), []);
-  const ch = Math.min(CHAPTERS.length - 1, Math.floor(t / CH_MS));
+  const ch = Math.max(0, Math.min(CHAPTERS.length - 1, Math.floor(t / CH_MS)));
   const go = useCallback((i: number) => { setT(Math.max(0, Math.min(CHAPTERS.length - 1, i)) * CH_MS); setPlaying(true); }, []);
   const done = t >= total;
   const toggle = useCallback(() => { if (done) { setT(0); setPlaying(true); } else setPlaying((p) => !p); }, [done]);
