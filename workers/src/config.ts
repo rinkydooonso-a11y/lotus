@@ -53,7 +53,7 @@ const EnvSchema = z.object({
   PUMP_COIN_MINT: base58Address.optional(),
   /** Gas-only wallet for the fee claimer. Fees never pass through it. */
   FEE_CLAIMER_SECRET_KEY: z.string().min(1).optional(),
-  FEE_CLAIM_INTERVAL_MS: z.coerce.number().int().min(600_000).default(3 * 3600_000),
+  FEE_CLAIM_INTERVAL_MS: z.coerce.number().int().min(600_000).default(600_000),
   /** Skip claims smaller than this many base units of the quote asset. */
   FEE_CLAIM_MIN_BASE_UNITS: z.string().regex(/^\d{1,30}$/).default('1'),
   /** Refuse to claim unless the vault's share of the fees is at least this (10000 = 100%). */
