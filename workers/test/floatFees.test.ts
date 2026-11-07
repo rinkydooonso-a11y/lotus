@@ -23,6 +23,20 @@ class FloatFake implements CreatorFeeGateway {
     this.held = 0n; this.swaps++;
     return { signature: 'swap1', lamports: 2_000_000_000n };
   }
+  usdcSwaps: bigint[] = [];
+  solSwaps: bigint[] = [];
+  async swapToUsdc(amount: bigint) {
+    this.held -= amount; this.usdcSwaps.push(amount);
+    return { signature: 'usdc1', usdc: 72_000_000n }; // $72
+  }
+}
+
+/** Like FloatFake but the SOL leg also takes only its part, as the real gateway does. */
+class SplitFake extends FloatFake {
+  async swapToSol(amount: bigint) {
+    this.held -= amount; this.solSwaps.push(amount); this.swaps++;
+    return { signature: 'sol1', lamports: 1_400_000_000n }; // 1.4 SOL
+  }
 }
 
 function setup() {
@@ -55,6 +69,25 @@ describe('Float fee sweep', () => {
     expect(s.claims).toHaveLength(1);
   });
 
+  it('with a 30% USDC share: 70% of the tokens go to SOL (not credited), 30% to USDC (credited in full)', async () => {
+    const gateway = new SplitFake();
+    const claims: Claim[] = [];
+    const deps = {
+      gateway,
+      claims: { recordClaim: async (e: Claim) => { claims.push(e); } },
+      minClaim: 0n, minSwap: 1n, minGasLamports: 5_000_000n, solUsd: async () => 150, cardFundBps: 7_000, usdcShareBps: 3_000, log: silentLog,
+    };
+    gateway.held = 10_000_000n;
+    expect(await runCreatorFeeTick(deps)).toMatchObject({ kind: 'done' });
+    expect(gateway.solSwaps).toEqual([7_000_000n]);
+    expect(gateway.usdcSwaps).toEqual([3_000_000n]);
+    expect(gateway.held).toBe(0n);
+    expect(claims).toHaveLength(2);
+    expect(claims[0]).toMatchObject({ signature: 'sol1', asset: 'SOL', usdValue: '210.00', fundUsd: null });
+    expect(claims[1]).toMatchObject({ signature: 'usdc1', asset: 'USDC', amount: '72.000000', usdValue: '72.00', fundUsd: '72.00' });
+    expect(await runCreatorFeeTick(deps)).toEqual({ kind: 'idle' });
+  });
+
   it('does not sweep when the wallet is out of gas', async () => {
     const s = setup();
     s.gateway.held = 4_000_000n;
@@ -77,6 +110,10 @@ describe('Float config', () => {
     expect(loadConfig({ ...base, FLOAT_FEES: 'yes' } as never).FLOAT_PAIR_MINT).toBe('So11111111111111111111111111111111111111112');
     expect(loadConfig({ ...base, FLOAT_FEES: 'yes', FLOAT_PAIR_MINT: 'CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp' } as never).FLOAT_PAIR_MINT)
       .toBe('CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp');
+  });
+  it('refuses a USDC share when the coin is paired with wrapped SOL', () => {
+    expect(() => loadConfig({ ...base, FLOAT_FEES: 'yes', FEE_USDC_SHARE_BPS: '3000' } as never)).toThrow(/FEE_USDC_SHARE_BPS/);
+    expect(loadConfig({ ...base, FLOAT_FEES: 'yes', FLOAT_PAIR_MINT: 'CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp', FEE_USDC_SHARE_BPS: '3000' } as never).FEE_USDC_SHARE_BPS).toBe(3000);
   });
   it('refuses to mix Float mode with the pump.fun modes', () => {
     expect(() => loadConfig({ ...base, FLOAT_FEES: 'yes', ONE_WALLET_FEES: 'yes' } as never)).toThrow(/FLOAT_FEES replaces/);

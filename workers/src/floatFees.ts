@@ -24,6 +24,7 @@ import {
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import { MAINNET_CONFIRMATION_PHRASE, MAINNET_GENESIS_HASH } from './config.js';
 import { checkSwapInstructions } from './buyerGateway.js';
+import { USDC_MINT } from './collectorCrypt.js';
 import type { CreatorFeeGateway } from './feeClaimer.js';
 import type { SwapInQuote } from './creatorFees.js';
 
@@ -54,7 +55,7 @@ export interface FloatFeesConfig {
   allowMainnet: string | undefined;
   priorityFeeMicroLamports: number;
   /** Builds a swap of exactly `amount` of `inputMint` into SOL for `user`. */
-  buildSwapIn(inputMint: string, amount: bigint, user: string): Promise<SwapInQuote>;
+  buildSwapIn(inputMint: string, amount: bigint, user: string, outputMint?: 'SOL' | 'USDC'): Promise<SwapInQuote>;
   /** A swap quoted with more price impact than this fraction is refused. */
   maxPriceImpact: number;
 }
@@ -176,6 +177,53 @@ export async function createFloatFeeGateway(cfg: FloatFeesConfig): Promise<Creat
     return simulateAndSend(tx, [cfg.wallet], amount, floor, 'swap');
   };
 
+  const usdcAta = getAssociatedTokenAddressSync(USDC_MINT, wallet, false, TOKEN_PROGRAM_ID);
+  const usdcBalance = async (): Promise<bigint> => {
+    const info = await connection.getAccountInfo(usdcAta, 'confirmed');
+    return info && info.data.length >= AccountLayout.span ? AccountLayout.decode(info.data).amount : 0n;
+  };
+
+  /** Swaps exactly `amount` of the pair into USDC, which stays in the wallet for the card buyer. */
+  const swapUsdc = async (amount: bigint) => {
+    if (wrapped) throw new Error('splitting wrapped SOL into USDC is not supported; pair the coin with a token');
+    const q = await cfg.buildSwapIn(cfg.pairMint, amount, wallet.toBase58(), 'USDC');
+    if (!(q.priceImpact <= cfg.maxPriceImpact)) {
+      throw new Error(`USDC swap price impact ${(q.priceImpact * 100).toFixed(2)}% is above the ${(cfg.maxPriceImpact * 100).toFixed(2)}% limit; not swapping`);
+    }
+    const tx = VersionedTransaction.deserialize(q.tx);
+    const msg = tx.message;
+    if (!msg.staticAccountKeys[0]?.equals(wallet)) throw new Error('USDC swap transaction is not paid by this wallet');
+    const luts: AddressLookupTableAccount[] = [];
+    for (const l of msg.addressTableLookups) {
+      const res = await connection.getAddressLookupTable(l.accountKey);
+      if (!res.value) throw new Error(`lookup table ${l.accountKey.toBase58()} not found`);
+      luts.push(res.value);
+    }
+    checkSwapInstructions(TransactionMessage.decompile(msg, { addressLookupTableAccounts: luts }).instructions, wallet.toBase58());
+    for (let i = 1; i < msg.header.numRequiredSignatures; i++) {
+      if (tx.signatures[i]?.every((b) => b === 0)) throw new Error('USDC swap transaction needs a signature we do not have');
+    }
+    const usdcBefore = await usdcBalance();
+    const tokenBefore = await tokenBalance();
+    const sim = await connection.simulateTransaction(tx, {
+      sigVerify: false,
+      replaceRecentBlockhash: false,
+      commitment: 'confirmed',
+      accounts: { encoding: 'base64', addresses: [ata.toBase58(), usdcAta.toBase58()] },
+    });
+    if (sim.value.err) throw new Error(`USDC swap simulation failed: ${JSON.stringify(sim.value.err)}`);
+    const [t, u] = sim.value.accounts ?? [];
+    if (!t || !u) throw new Error('USDC swap simulation returned no account state');
+    const tokenAfter = AccountLayout.decode(Buffer.from(t.data[0] ?? '', 'base64')).amount;
+    if (tokenBefore - tokenAfter > amount) throw new Error('USDC swap would spend more of the token than asked');
+    const usdcAfter = AccountLayout.decode(Buffer.from(u.data[0] ?? '', 'base64')).amount;
+    if (usdcAfter - usdcBefore < q.minOutLamports) throw new Error(`USDC swap would deliver ${usdcAfter - usdcBefore}, less than the quoted minimum ${q.minOutLamports}`);
+    tx.sign([cfg.wallet]);
+    const signature = await send(tx, 'USDC swap');
+    const after = await usdcBalance();
+    return { signature, usdc: after > usdcBefore ? after - usdcBefore : null };
+  };
+
   return {
     // The creator share arrives on its own; there is no claim instruction for us to call.
     paidDirectly: true,
@@ -203,6 +251,11 @@ export async function createFloatFeeGateway(cfg: FloatFeesConfig): Promise<Creat
     async swapToSol(amount) {
       if (amount <= 0n) throw new Error('swap amount must be positive');
       return wrapped ? unwrap(amount) : swap(amount);
+    },
+
+    async swapToUsdc(amount) {
+      if (amount <= 0n) throw new Error('swap amount must be positive');
+      return swapUsdc(amount);
     },
   };
 }

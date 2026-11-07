@@ -149,6 +149,8 @@ export interface CreatorFeeGateway {
   quoteTokenBalance(): Promise<bigint>;
   /** Swaps exactly `amount` of the quote token into SOL, after checking and simulating the swap. */
   swapToSol(amount: bigint): Promise<{ signature: string; lamports: bigint | null }>;
+  /** Swaps exactly `amount` of the quote token into USDC (base units, 6 decimals) that stays in the wallet. Float mode only. */
+  swapToUsdc?(amount: bigint): Promise<{ signature: string; usdc: bigint | null }>;
 }
 
 export interface CreatorFeeDeps {
@@ -162,6 +164,12 @@ export interface CreatorFeeDeps {
   /** SOL price in USD (already range-checked). A throw or non-positive price adds nothing to the fund. */
   solUsd: () => Promise<number>;
   cardFundBps: number;
+  /**
+   * Share of each sweep swapped to USDC instead of SOL (3000 = 30%). That USDC is the card fund: it is
+   * credited in full, dollar for dollar, and `cardFundBps` is not used. The rest becomes SOL and is not
+   * credited. 0 (or unset) keeps the old rule: everything to SOL, `cardFundBps` of it credited.
+   */
+  usdcShareBps?: number;
   log: Logger;
 }
 
@@ -223,7 +231,42 @@ export async function runCreatorFeeTick(deps: CreatorFeeDeps): Promise<CreatorFe
   // 2. Swap whatever quote tokens the wallet holds, which also retries an earlier failed swap.
   if (!native) {
     const balance = await gateway.quoteTokenBalance();
-    if (balance >= deps.minSwap && balance > 0n) {
+    const usdcBps = deps.usdcShareBps ?? 0;
+    if (usdcBps > 0 && gateway.swapToUsdc && balance >= deps.minSwap && balance > 0n) {
+      // Split: usdcBps of the tokens become USDC (the card fund), the rest SOL (kept in the wallet).
+      const usdcPart = (balance * BigInt(usdcBps)) / 10_000n;
+      const solPart = balance - usdcPart;
+      if (solPart > 0n) {
+        const { signature, lamports } = await gateway.swapToSol(solPart);
+        swappedSig = signature;
+        const usd = await lamportsUsd(deps, lamports);
+        await deps.claims.recordClaim({
+          signature,
+          amount: lamports === null ? null : toDecimal(lamports, 9),
+          asset: 'SOL',
+          note: `${toDecimal(solPart, decimals)} ${asset} swapped to SOL, kept in the wallet${lamports === null ? ' (amount not read, see tx)' : ''}`,
+          usdValue: usd === null ? null : usd.toFixed(2),
+          fundUsd: null,
+          kind: 'other',
+        });
+        log.info('fee tokens swapped to SOL', { signature, tokens: solPart.toString(), lamports: lamports?.toString() ?? null });
+      }
+      if (usdcPart > 0n) {
+        const { signature, usdc } = await gateway.swapToUsdc(usdcPart);
+        swappedSig = signature;
+        const dollars = usdc === null ? null : Number(usdc) / 1e6;
+        await deps.claims.recordClaim({
+          signature,
+          amount: usdc === null ? null : toDecimal(usdc, 6),
+          asset: 'USDC',
+          note: `${toDecimal(usdcPart, decimals)} ${asset} swapped to USDC for the card fund${usdc === null ? '; amount not read, add it to the fund by hand' : ''}`,
+          usdValue: dollars === null ? null : dollars.toFixed(2),
+          fundUsd: dollars === null ? null : dollars.toFixed(2),
+          kind: 'other',
+        });
+        log.info('fee tokens swapped to USDC', { signature, tokens: usdcPart.toString(), usdc: usdc?.toString() ?? null });
+      }
+    } else if (balance >= deps.minSwap && balance > 0n) {
       const { signature, lamports } = await gateway.swapToSol(balance);
       swappedSig = signature;
       const usd = await lamportsUsd(deps, lamports);

@@ -60,6 +60,8 @@ const EnvSchema = z.object({
   FEE_MIN_VAULT_SHARE_BPS: z.coerce.number().int().min(1).max(10_000).default(10_000),
   /** Share of each fee claim that goes to the card fund the game pays prizes from (7000 = 70%). The rest stays in the vault. */
   FEE_CARD_FUND_BPS: z.coerce.number().int().min(0).max(10_000).default(7_000),
+  /** Float mode: share of each sweep swapped to USDC (the card fund); the rest becomes SOL and stays in the wallet (3000 = 30%). 0 = old rule. */
+  FEE_USDC_SHARE_BPS: z.coerce.number().int().min(0).max(10_000).default(0),
   FEE_CLAIMER_MIN_GAS_SOL: z.coerce.number().min(0).default(0.005),
   /**
    * Squads spending limit the hot wallet may draw on to buy cards. With SQUADS_MULTISIG_ADDRESS,
@@ -171,6 +173,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (parsed.data.FLOAT_FEES === 'yes') {
     if (parsed.data.ONE_WALLET_FEES === 'yes' || parsed.data.PUMP_COIN_MINT || parsed.data.FEE_CLAIMER_SECRET_KEY) {
       throw new Error('Invalid worker environment:\n  FLOAT_FEES replaces the pump.fun fee modes; unset ONE_WALLET_FEES, PUMP_COIN_MINT and FEE_CLAIMER_SECRET_KEY');
+    }
+    if (parsed.data.FEE_USDC_SHARE_BPS > 0 && parsed.data.FLOAT_PAIR_MINT === 'So11111111111111111111111111111111111111112') {
+      throw new Error('Invalid worker environment:\n  FEE_USDC_SHARE_BPS needs the coin paired with a token (set FLOAT_PAIR_MINT), not wrapped SOL');
     }
   } else if (parsed.data.ONE_WALLET_FEES === 'yes') {
     if (!parsed.data.PUMP_COIN_MINT) throw new Error('Invalid worker environment:\n  ONE_WALLET_FEES needs PUMP_COIN_MINT');
