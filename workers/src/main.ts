@@ -260,6 +260,7 @@ async function main() {
             return p;
           },
           cardFundBps: config.FEE_CARD_FUND_BPS,
+          usdcShareBps: floatFees ? config.FEE_USDC_SHARE_BPS : 0,
           log,
         };
       }

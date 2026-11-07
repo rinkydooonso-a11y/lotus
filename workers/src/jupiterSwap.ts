@@ -38,14 +38,17 @@ export function createJupiterSwap(opts: { slippageBps: number; fetchImpl?: typeo
  */
 export function createJupiterSwapToSol(opts: { slippageBps: number; fetchImpl?: typeof fetch }) {
   const f = opts.fetchImpl ?? fetch;
-  return async (inputMint: string, amount: bigint, user: string): Promise<{ tx: Uint8Array; minOutLamports: bigint; priceImpact: number }> => {
+  // `outputMint` is native SOL unless the caller asks for USDC. `minOutLamports` is then the guaranteed
+  // minimum in that output's own base units (USDC: 6 decimals).
+  return async (inputMint: string, amount: bigint, user: string, outputMint: 'SOL' | 'USDC' = 'SOL'): Promise<{ tx: Uint8Array; minOutLamports: bigint; priceImpact: number }> => {
+    const outMint = outputMint === 'USDC' ? USDC : SOL;
     const q = new URLSearchParams({
-      inputMint, outputMint: SOL, amount: amount.toString(), swapMode: 'ExactIn', slippageBps: String(opts.slippageBps),
+      inputMint, outputMint: outMint, amount: amount.toString(), swapMode: 'ExactIn', slippageBps: String(opts.slippageBps),
     });
     const qres = await f(`${BASE}/quote?${q}`, { signal: AbortSignal.timeout(15_000) });
     if (!qres.ok) throw new Error(`Jupiter quote ${qres.status}`);
     const quote = (await qres.json()) as { inAmount?: string; outAmount?: string; otherAmountThreshold?: string; priceImpactPct?: string; swapMode?: string; inputMint?: string; outputMint?: string };
-    if (quote.swapMode !== 'ExactIn' || quote.inputMint !== inputMint || quote.outputMint !== SOL) throw new Error('Jupiter quote is not the swap we asked for');
+    if (quote.swapMode !== 'ExactIn' || quote.inputMint !== inputMint || quote.outputMint !== outMint) throw new Error('Jupiter quote is not the swap we asked for');
     if (BigInt(quote.inAmount ?? '0') !== amount) throw new Error('Jupiter quote does not swap the amount asked');
     const minOut = BigInt(quote.otherAmountThreshold ?? '0');
     if (minOut <= 0n) throw new Error('Jupiter quote promises no SOL');

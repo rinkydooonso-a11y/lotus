@@ -42,7 +42,7 @@ export interface CreatorFeesConfig {
   allowMainnet: string | undefined;
   priorityFeeMicroLamports: number;
   /** Builds a swap of exactly `amount` of `inputMint` into SOL for `user`. */
-  buildSwapIn(inputMint: string, amount: bigint, user: string): Promise<SwapInQuote>;
+  buildSwapIn(inputMint: string, amount: bigint, user: string, outputMint?: 'SOL' | 'USDC'): Promise<SwapInQuote>;
   /** A swap quoted with more price impact than this fraction is refused. */
   maxPriceImpact: number;
 }
