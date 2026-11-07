@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GAME } from '../src/config';
 import { openCrate } from '../src/openCrate';
 import { claimNextPrizeSend, markPrizeFailed, markPrizeSent, recordSubmittedSignature } from '../src/prizeQueue';
@@ -217,6 +217,23 @@ describe('prize pool ceiling', () => {
     if (usd > 0) await pool.query(`INSERT INTO prize_fund_entries (kind, usd) VALUES ('seed', $1)`, [usd]);
   };
   const utcHour = async () => (await pool.query(`SELECT extract(hour FROM now() AT TIME ZONE 'UTC')::int AS h`)).rows[0].h as number;
+  // These tests cover the pool / payout-days ceiling, which applies when the fixed daily budget is off.
+  const game = GAME as { maxCardValueUsdPerDay: number };
+  const savedBudget = game.maxCardValueUsdPerDay;
+  beforeEach(() => { game.maxCardValueUsdPerDay = 0; });
+  afterEach(() => { game.maxCardValueUsdPerDay = savedBudget; });
+
+  it('with a daily budget, the ceiling is the budget, capped by the pool, released an hour at a time', async () => {
+    game.maxCardValueUsdPerDay = 500;
+    await setFund(3000);
+    const h = await utcHour();
+    const b = await dailyBudget(pool);
+    expect(b.ceilingUsd).toBe(500);
+    expect(b.valueLeftUsd).toBeCloseTo((500 * (h + 1)) / 24, 1);
+    // A pool smaller than the budget is the limit: never give away more than the pool holds.
+    await setFund(120);
+    expect((await dailyBudget(pool)).ceilingUsd).toBe(120);
+  });
 
   it('is one payout-day of the pool, rounded down to the cent', () => {
     expect(ceilingFromPool(1400, 14)).toBe(100);

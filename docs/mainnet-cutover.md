@@ -71,7 +71,7 @@ The buyer reads `api.collectorcrypt.com/marketplace`, re-reads each listing acco
 - `BUY_UPDATE_AUTHORITY` = `DQPERZ9e86pNJ4mhUnCEP8V75yxZofsipoVrRWT5Wdxd`. This is what DAS lists as the full authority on a sampled Core card (checked read-only on mainnet), so it is what the DAS card check compares. On chain, the Core asset's own update authority is the Collection type pointing at `CCryptUfe...`; the buyer's on-chain listing check pins that collection separately. Do not set `BUY_UPDATE_AUTHORITY` to `CCryptUfe...`: every card would be refused.
 - `BUY_REQUIRED_TRAITS` = `Type=Card`.
 - **Seed the card fund before the buyer runs.** `cd workers && DATABASE_URL=... npx tsx scripts/fund-entry.ts seed 750 "launch seed"`, for whatever amount actually sits in the vault for cards. Without a seed the buyer waits for the first fee claim. Set the Squads weekly spending limit to match.
-- `LOTUS_POOL_PAYOUT_DAYS` must be the same on the game server (Vercel) and the workers (Fly).
+- `LOTUS_MAX_CARD_VALUE_PER_DAY` (the daily prize budget, default 500) must be the same on the game server (Vercel) and the workers (Fly). The buyer keeps `BUY_STOCK_DAYS` (default 1) of it in stock.
 - Before turning it on: fund the hot wallet with a little SOL, run `scripts/buyer-dry-run.ts` (read-only), and run a mainnet simulation of a swap plus buy with the funded hot wallet. The program is upgradeable and has pause controls, so re-check the instruction layout if a simulation starts failing.
 
 ## Replacing the prize wallet

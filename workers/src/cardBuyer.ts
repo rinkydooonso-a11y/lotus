@@ -47,6 +47,8 @@ export interface BuyPolicy {
   tierMix: Record<Tier, number>;
   /** The pool pays out over this many days; one day's release is pool / payoutDays. */
   payoutDays: number;
+  /** The game's fixed daily prize budget in USD (LOTUS_MAX_CARD_VALUE_PER_DAY). When above 0 it is one day's release and `payoutDays` is not used. */
+  dayBudgetUsd?: number;
   /** Stock held in the hot wallet, in days of release. */
   stockDays: number;
   /** Lowest insured value (USD) for each tier; a card takes the highest tier it reaches. */
@@ -87,7 +89,8 @@ export interface Sizing {
 export function sizing(fund: FundState, policy: BuyPolicy): Sizing {
   const stock = TIERS.reduce((a, t) => a + (fund.stockUsd[t] ?? 0), 0);
   const poolUsd = Math.max(0, fund.cashUsd) + stock;
-  const dayReleaseUsd = poolUsd / Math.max(1, policy.payoutDays);
+  // The daily budget is a fixed dollar number when set; otherwise a share of the pool.
+  const dayReleaseUsd = policy.dayBudgetUsd && policy.dayBudgetUsd > 0 ? policy.dayBudgetUsd : poolUsd / Math.max(1, policy.payoutDays);
   const stockTarget = dayReleaseUsd * policy.stockDays;
   const targetUsd = { common: 0, uncommon: 0, rare: 0, grail: 0 };
   for (const t of TIERS) targetUsd[t] = stockTarget * (policy.tierMix[t] ?? 0);

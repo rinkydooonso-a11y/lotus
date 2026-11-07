@@ -73,6 +73,17 @@ describe('sizing', () => {
     expect(sizing({ cashUsd: -5, stockUsd: z }, policy)).toMatchObject({ poolUsd: 0, capUsd: 0 });
   });
 
+  it('with a fixed daily budget, one day of it is the stock and the card cap, whatever the pool', () => {
+    const z = { common: 0, uncommon: 0, rare: 0, grail: 0 };
+    const p = { ...policy, dayBudgetUsd: 500, stockDays: 1 };
+    const s = sizing({ cashUsd: 3000, stockUsd: z }, p);
+    expect(s).toMatchObject({ poolUsd: 3000, dayReleaseUsd: 500, capUsd: 500 });
+    expect(s.targetUsd.common).toBeCloseTo(225); // one day of 500, 45%
+    expect(s.targetUsd.grail).toBeCloseTo(25);
+    // A small pool still sizes from the budget; the buyer just runs out of cash first.
+    expect(sizing({ cashUsd: 100, stockUsd: z }, p).dayReleaseUsd).toBe(500);
+  });
+
   it('measures how short each tier is', () => {
     const fund: FundState = { cashUsd: 1400, stockUsd: { common: 200, uncommon: 10, rare: 0, grail: 0 } };
     const short = shortByTier(fund, sizing(fund, policy));

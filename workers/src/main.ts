@@ -354,6 +354,7 @@ async function main() {
           policy: {
             tierMix: config.BUY_TIER_MIX,
             payoutDays: config.LOTUS_POOL_PAYOUT_DAYS,
+            dayBudgetUsd: config.LOTUS_MAX_CARD_VALUE_PER_DAY,
             stockDays: config.BUY_STOCK_DAYS,
             tierMinUsd: config.BUY_TIER_MIN_USD,
             requiredTraits: config.BUY_REQUIRED_TRAITS,

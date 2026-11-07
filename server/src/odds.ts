@@ -117,14 +117,21 @@ interface DayBasis {
 
 async function dayBasis(db: Q, c: BudgetCaps = {}): Promise<DayBasis> {
   const maxCards = c.maxCards ?? GAME.maxCardsPerDay;
-  const fixed = c.maxValueUsd ?? (GAME.maxCardValueUsdPerDay > 0 ? GAME.maxCardValueUsdPerDay : null);
+  // An explicit cap (tests, emergency override) is spent in full all day. The configured daily budget is
+  // not: it is the day's ceiling like the pool-based one, fixed when the first card is awarded, never
+  // above the pool, and released an hour at a time.
+  const fixed = c.maxValueUsd ?? null;
+  const budgetUsd = GAME.maxCardValueUsdPerDay > 0 ? GAME.maxCardValueUsdPerDay : null;
   const r = await db.query<{ hour: number; cards_awarded: number | null; value_awarded_usd: string | null; ceiling_usd: string | null }>(
     `SELECT extract(hour FROM now() AT TIME ZONE 'UTC')::int AS hour, b.cards_awarded, b.value_awarded_usd, b.ceiling_usd
        FROM (SELECT 1) x LEFT JOIN prize_budget_days b ON b.budget_day = ${UTC_DAY}`,
   );
   const row = r.rows[0]!;
-  const ceilingUsd =
-    fixed ?? (row.ceiling_usd !== null ? Number(row.ceiling_usd) : ceilingFromPool((await prizePool(db)).poolUsd));
+  const fromPool = async (): Promise<number> => {
+    const { poolUsd } = await prizePool(db);
+    return budgetUsd !== null ? Math.floor(Math.min(budgetUsd, poolUsd) * 100) / 100 : ceilingFromPool(poolUsd);
+  };
+  const ceilingUsd = fixed ?? (row.ceiling_usd !== null ? Number(row.ceiling_usd) : await fromPool());
   return {
     maxCards,
     fixedUsd: fixed,
