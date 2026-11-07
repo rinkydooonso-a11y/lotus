@@ -42,7 +42,10 @@ Prizes are paid only from money that has come in.
   creator-fee claim priced at claim time, minus what each card purchase cost.
 - **Pool** = card fund cash + the cost of the cards in stock. Cards count at what they cost, not their
   insured value, so buying under insured value can't make the pool grow.
-- **Day's ceiling** = pool / `LOTUS_POOL_PAYOUT_DAYS` (14), fixed when the day's first card is awarded.
+- **Day's ceiling** = the daily prize budget `LOTUS_MAX_CARD_VALUE_PER_DAY` (default $500), but never more than the pool,
+  fixed when the day's first card is awarded and released an hour at a time. Past it, opens pay shards only until midnight UTC.
+  Setting the budget to 0 switches to pool / `LOTUS_POOL_PAYOUT_DAYS` (14). The workers keep one day of the budget in stock
+  (`BUY_STOCK_DAYS=1`) and must have the same `LOTUS_MAX_CARD_VALUE_PER_DAY`.
   The ceiling is in insured dollars (what each award books), so it is conservative for cards bought
   below insured value.
 - **Released hourly**: by hour *h* (UTC, 0 to 23) at most (*h* + 1) / 24 of the ceiling can have been

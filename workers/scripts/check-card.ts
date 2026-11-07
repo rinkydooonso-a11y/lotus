@@ -24,7 +24,8 @@ const listingPages = Number(env('BUY_LISTING_PAGES', '100'));
 const policy: BuyPolicy = {
   tierMix: parseMix(env('BUY_TIER_MIX', 'common:45,uncommon:30,rare:20,grail:5')),
   payoutDays: Number(env('LOTUS_POOL_PAYOUT_DAYS', '14')),
-  stockDays: Number(env('BUY_STOCK_DAYS', '3')),
+  dayBudgetUsd: Number(env('LOTUS_MAX_CARD_VALUE_PER_DAY', '500')),
+  stockDays: Number(env('BUY_STOCK_DAYS', '1')),
   tierMinUsd: parseTargets(env('BUY_TIER_MIN_USD', 'common:0,uncommon:30,rare:75,grail:300'), 'BUY_TIER_MIN_USD', 6),
   requiredTraits: parseTraits(env('BUY_REQUIRED_TRAITS', 'Type=Card;Category=Pokemon')),
   valueTrait: env('BUY_VALUE_TRAIT', 'Insured Value'),

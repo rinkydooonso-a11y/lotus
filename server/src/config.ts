@@ -50,10 +50,13 @@ export const GAME = {
    */
   maxCardsPerDay: num('LOTUS_MAX_CARDS_PER_DAY', 1000),
   /**
-   * Optional fixed dollar ceiling that replaces the pool-based one (0 = off). An emergency dial,
-   * not a normal setting.
+   * The daily prize budget: the game gives away at most this many dollars of cards per UTC day (never
+   * more than the pool holds), released an hour at a time so one busy hour can't take it all. Past it
+   * opens pay shards only until midnight UTC. This is the hard cap against farming. It replaces the
+   * pool / poolPayoutDays ceiling above (set 0 to go back to that). Must equal
+   * LOTUS_MAX_CARD_VALUE_PER_DAY on the workers, which keep one day of this budget in stock.
    */
-  maxCardValueUsdPerDay: num('LOTUS_MAX_CARD_VALUE_PER_DAY', 0),
+  maxCardValueUsdPerDay: num('LOTUS_MAX_CARD_VALUE_PER_DAY', 500),
   shardsPerEmptyMin: 1,
   shardsPerEmptyMax: 3,
   /**

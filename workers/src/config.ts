@@ -97,7 +97,9 @@ const EnvSchema = z.object({
   /** The pool pays out over this many days. Must match LOTUS_POOL_PAYOUT_DAYS on the game server. */
   LOTUS_POOL_PAYOUT_DAYS: z.coerce.number().min(1).default(14),
   /** Days of a day's release the hot wallet holds in cards. */
-  BUY_STOCK_DAYS: z.coerce.number().positive().default(3),
+  BUY_STOCK_DAYS: z.coerce.number().positive().default(1),
+  /** The game's fixed daily prize budget in USD. Must match LOTUS_MAX_CARD_VALUE_PER_DAY on the game server. The buyer keeps BUY_STOCK_DAYS of it in stock. 0 = use pool / LOTUS_POOL_PAYOUT_DAYS. */
+  LOTUS_MAX_CARD_VALUE_PER_DAY: z.coerce.number().min(0).default(500),
   /** Lowest insured value (USD) for each tier. Same bands as the game's tiers (server tierForValue). */
   BUY_TIER_MIN_USD: z.string().default('common:0,uncommon:30,rare:75,grail:300'),
   /** Traits a listing must have, e.g. "Type=Card;Grading Company=PSA". */
