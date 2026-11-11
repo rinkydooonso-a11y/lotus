@@ -6,6 +6,7 @@ import type { HistoryEntry } from "@/lib/types";
 import { TIER_LABEL, timeAgo, usd } from "@/lib/format";
 import { CardThumb } from "@/components/CardThumb";
 import { ConnectSheet } from "@/components/ConnectSheet";
+import { SiteFooter } from "@/components/Docs";
 import { Shard, Ticket } from "@/components/Icons";
 import { MAX_TICKETS } from "@/lib/rules";
 
@@ -28,6 +29,7 @@ export default function History() {
         <button className="btn" onClick={() => setConnect(true)}>Connect wallet</button>
       </div>
       {connect && <ConnectSheet onClose={() => setConnect(false)} />}
+      <SiteFooter />
     </div>
   );
   return (
@@ -60,6 +62,7 @@ export default function History() {
           ))}
         </ul>
       )}
+      <SiteFooter />
     </div>
   );
 }
