@@ -786,3 +786,14 @@ html:has(.home:not(.full)){overflow:hidden}
 .final .qr-text p,.final .qr-text b,.final .copy-link{color:var(--ink)!important}
 .final .qr-text p{opacity:.8}
 .final .qr-card.ink{background:rgba(18,18,18,.08)!important}
+
+/* small phones (iPhone SE, Galaxy Fold): keep logo, Connect and the menu button on screen */
+@media(max-width:379px){
+  .topbar-in{gap:10px;padding:0 10px 0 14px}
+  .topbar-end{gap:6px}
+  .brand{min-width:0}
+  .wordmark{font-size:14px;gap:7px}
+  .wordmark .mark{width:24px;height:24px}
+  .topbar-end .btn-sm{padding:0 12px;font-size:12px;letter-spacing:.04em}
+  .connect-chip{margin-left:0}
+}
